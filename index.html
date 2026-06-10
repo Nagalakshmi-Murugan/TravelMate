@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<!--
+  DOCTYPE tells the browser: "This is a modern HTML5 page."
+  Always include this at the very top of every HTML file.
+-->
+<html lang="en">
+
+<head>
+  <!-- 
+    The <head> section is invisible to users.
+    It holds settings, styles, and metadata about the page.
+  -->
+  <meta charset="UTF-8" />
+  <!-- UTF-8 lets us use any character (emojis, accents, etc.) -->
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- 
+    This makes the page look good on phones too.
+    Without this, mobile browsers zoom out and make everything tiny.
+  -->
+
+  <title>TravelMate AI — Plan Your Perfect Trip</title>
+
+  <!-- Link to Google Fonts — we're using two fonts:
+       'Playfair Display' for headings (elegant, travel-magazine feel)
+       'Inter' for body text (clean and readable) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- This links our CSS file to this HTML file -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- 
+    Everything inside <body> is what users actually see on the page.
+    We'll build it section by section.
+  -->
+
+  <!-- ==================== NAVBAR ==================== -->
+  <!--
+    The navbar sits at the top of every page.
+    It shows the brand name and a couple of nav links.
+  -->
+  <nav class="navbar">
+    <div class="nav-inner">
+      <!-- Brand logo area -->
+      <div class="nav-brand">
+        <span class="nav-icon">✈️</span>
+        <span class="nav-title">TravelMate <span class="nav-ai">AI</span></span>
+      </div>
+
+      <!-- Navigation links -->
+      <ul class="nav-links">
+        <li><a href="#planner">Plan Trip</a></li>
+        <li><a href="#saved">Saved Trips</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ==================== HERO SECTION ==================== -->
+  <!--
+    The hero is the big banner at the top.
+    It's the first thing users see — it should inspire them to travel!
+  -->
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="hero-eyebrow">AI-Powered Travel Planning</p>
+      <h1 class="hero-headline">Your Dream Trip,<br />Planned in Seconds</h1>
+      <p class="hero-sub">
+        Tell us where you want to go. Our AI builds a full day-by-day itinerary
+        tailored to your budget and travel style.
+      </p>
+      <!-- Clicking this scrolls the user down to the form -->
+      <a href="#planner" class="btn btn-primary">Start Planning →</a>
+    </div>
+  </header>
+
+  <!-- ==================== PLANNER FORM ==================== -->
+  <!--
+    This is the main form where users enter their trip details.
+    id="planner" lets the nav link scroll here.
+  -->
+  <section id="planner" class="section">
+    <div class="container">
+
+      <div class="section-header">
+        <h2 class="section-title">Plan Your Trip</h2>
+        <p class="section-subtitle">Fill in the details and let AI do the rest</p>
+      </div>
+
+      <!-- The form card — visually a white card with a shadow -->
+      <div class="form-card">
+        <!--
+          We use a <form> tag to group all the inputs together.
+          onsubmit="..." means: when the user clicks Submit, run this JS function.
+          return false; stops the page from reloading (default form behavior).
+        -->
+        <form onsubmit="generateItinerary(event)">
+
+          <!-- Row 1: Destination + Travel Style (two columns on desktop) -->
+          <div class="form-row">
+
+            <div class="form-group">
+              <!-- <label> describes what the input is for -->
+              <label for="destination">🌍 Destination</label>
+              <!--
+                <input> is a single-line text field.
+                id="destination" links it to its label (for accessibility).
+                placeholder="..." shows hint text when the field is empty.
+                required means the form won't submit if this is empty.
+              -->
+              <input
+                type="text"
+                id="destination"
+                placeholder="e.g. Paris, France"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="style">🎒 Travel Style</label>
+              <!--
+                <select> is a dropdown menu.
+                Each <option> is one choice in the dropdown.
+                value="..." is what gets sent to our code when selected.
+              -->
+              <select id="style" required>
+                <option value="" disabled selected>Choose a style</option>
+                <option value="adventure">Adventure & Outdoors</option>
+                <option value="cultural">Cultural & Historical</option>
+                <option value="relaxation">Relaxation & Wellness</option>
+                <option value="foodie">Foodie & Local Cuisine</option>
+                <option value="budget">Budget Backpacking</option>
+                <option value="luxury">Luxury & Fine Dining</option>
+              </select>
+            </div>
+
+          </div>
+
+          <!-- Row 2: Start Date + End Date -->
+          <div class="form-row">
+
+            <div class="form-group">
+              <label for="start-date">📅 Start Date</label>
+              <!-- type="date" shows a date picker calendar widget -->
+              <input type="date" id="start-date" required />
+            </div>
+
+            <div class="form-group">
+              <label for="end-date">📅 End Date</label>
+              <input type="date" id="end-date" required />
+            </div>
+
+          </div>
+
+          <!-- Row 3: Budget (full width) -->
+          <div class="form-row">
+
+            <div class="form-group full-width">
+              <label for="budget">💰 Budget (USD)</label>
+              <!--
+                type="number" only allows numbers.
+                min="0" means negative budgets are not allowed.
+                placeholder shows example text.
+              -->
+              <input
+                type="number"
+                id="budget"
+                placeholder="e.g. 1500"
+                min="0"
+                required
+              />
+            </div>
+
+          </div>
+
+          <!-- Submit button -->
+          <!--
+            type="submit" means clicking this triggers the form's onsubmit.
+            class="btn btn-primary btn-full" applies our CSS styles.
+          -->
+          <button type="submit" class="btn btn-primary btn-full" id="generate-btn">
+            ✨ Generate My Itinerary
+          </button>
+
+        </form>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== RESULTS SECTION ==================== -->
+  <!--
+    This section starts hidden (display: none in CSS).
+    When JS generates the itinerary, we'll make it visible.
+    id="results" lets us find it with JavaScript.
+  -->
+  <section id="results" class="section section-alt" style="display: none;">
+    <div class="container">
+
+      <div class="section-header">
+        <!-- This heading will be updated by JavaScript with the destination name -->
+        <h2 class="section-title" id="results-title">Your Itinerary</h2>
+        <p class="section-subtitle" id="results-meta"></p>
+      </div>
+
+      <!-- The actual day-by-day cards go inside here, added by JavaScript -->
+      <div id="itinerary-output"></div>
+
+      <!-- Action buttons shown after the itinerary is generated -->
+      <div class="results-actions">
+        <button class="btn btn-outline" onclick="saveTrip()">💾 Save Trip</button>
+        <button class="btn btn-outline" onclick="exportPDF()">📄 Export PDF</button>
+        <button class="btn btn-outline" onclick="viewMap()">🗺️ View on Map</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SAVED TRIPS SECTION ==================== -->
+  <!--
+    This will show previously saved trips.
+    For now it's a placeholder — we'll connect it to a database in Phase 4.
+  -->
+  <section id="saved" class="section">
+    <div class="container">
+
+      <div class="section-header">
+        <h2 class="section-title">Saved Trips</h2>
+        <p class="section-subtitle">Your travel history, all in one place</p>
+      </div>
+
+      <!-- Empty state: shown when there are no saved trips -->
+      <div class="empty-state">
+        <div class="empty-icon">🗺️</div>
+        <p>No saved trips yet. Generate one and click "Save Trip"!</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== FOOTER ==================== -->
+  <footer class="footer">
+    <p>TravelMate AI &copy; 2025 — Built with ✈️ and a lot of ☕</p>
+  </footer>
+
+  <!-- ==================== JAVASCRIPT ==================== -->
+  <!--
+    <script> tags hold JavaScript code.
+    JavaScript is what makes the page interactive.
+    Placing it at the bottom (before </body>) means the HTML loads first.
+  -->
+  <script>
+    // ============================================================
+    // PHASE 2: Frontend now talks to the Express backend
+    // ============================================================
+    //
+    // The big change from Phase 1:
+    //   Before: frontend built the itinerary itself (dummy data)
+    //   Now:    frontend ASKS the server to build it via fetch()
+    //
+    // What is fetch()?
+    //   fetch() is a built-in browser function that sends HTTP
+    //   requests to a server and waits for the response.
+    //   It's how the frontend "calls" the backend API.
+    //
+    // What is async/await?
+    //   When you call fetch(), it takes time (network travel).
+    //   "async" marks a function as one that does waiting.
+    //   "await" pauses execution until the fetch is done,
+    //   then continues with the result.
+    //   Without async/await, your code would keep running
+    //   before the server responded — giving you empty data.
+    //
+    // ============================================================
+
+    // The base URL of our backend server.
+    // We define it once here so if the port changes, we update it
+    // in only one place — not scattered across 10 fetch() calls.
+    const API_BASE = 'http://localhost:3000';
+
+    // -------------------------------------------------------
+    // MAIN FUNCTION: Runs when the form is submitted
+    // Now calls the backend instead of building data locally.
+    // -------------------------------------------------------
+    // "async" keyword before "function" means this function
+    // can use "await" inside it.
+    async function generateItinerary(event) {
+      event.preventDefault();
+
+      // Read form values (same as Phase 1)
+      const destination = document.getElementById("destination").value.trim();
+      const style       = document.getElementById("style").value;
+      const startDate   = document.getElementById("start-date").value;
+      const endDate     = document.getElementById("end-date").value;
+      const budget      = document.getElementById("budget").value;
+
+      // Client-side validation (fast check before hitting the server)
+      if (new Date(endDate) <= new Date(startDate)) {
+        showError("End date must be after start date.");
+        return;
+      }
+
+      // Show loading state
+      const btn = document.getElementById("generate-btn");
+      btn.textContent = "⏳ Talking to server...";
+      btn.disabled = true;
+
+      // Hide any previous error or results
+      hideError();
+      document.getElementById("results").style.display = "none";
+
+      // ----------------------------------------------------------
+      // THE KEY PART: Send a POST request to our Express server
+      // ----------------------------------------------------------
+      try {
+        // "try" means: run this code. If anything throws an error,
+        // jump to the "catch" block below.
+
+        // fetch() arguments:
+        //   1st: the URL to call
+        //   2nd: an options object describing the request
+        const response = await fetch(`${API_BASE}/api/generate`, {
+          method: 'POST',        // We're sending data, so use POST
+
+          headers: {
+            // Tell the server we're sending JSON text
+            // (not a form submission or a file)
+            'Content-Type': 'application/json'
+          },
+
+          // body is the data we're sending.
+          // JSON.stringify() converts a JS object into a JSON string.
+          // Example: { destination: "Paris" } → '{"destination":"Paris"}'
+          // The server's express.json() middleware will parse it back.
+          body: JSON.stringify({
+            destination,   // shorthand for destination: destination
+            startDate,
+            endDate,
+            budget,
+            style
+          })
+        });
+
+        // response.json() reads the response body and parses it
+        // from a JSON string back into a JavaScript object.
+        // "await" waits for this to finish before continuing.
+        const data = await response.json();
+
+        // response.ok is true for 2xx status codes (200, 201, etc.)
+        // It's false for error codes (400, 404, 500, etc.)
+        if (!response.ok) {
+          // data.error is the error message our server sent back
+          throw new Error(data.error || 'Server returned an error');
+        }
+
+        // ---- SUCCESS: Render the itinerary ----
+
+        // Update the heading and metadata
+        document.getElementById("results-title").textContent =
+          `📍 ${data.trip.destination} Itinerary`;
+
+        const formattedStart = new Date(data.trip.startDate + "T00:00:00")
+          .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        const formattedEnd = new Date(data.trip.endDate + "T00:00:00")
+          .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+        document.getElementById("results-meta").textContent =
+          `${formattedStart} → ${formattedEnd} · ${data.trip.days} days · $${data.trip.budget} budget`;
+
+        // Render the day cards (same function as Phase 1)
+        renderItinerary(data.itinerary);
+
+        // Show and scroll to results
+        const resultsSection = document.getElementById("results");
+        resultsSection.style.display = "block";
+        resultsSection.scrollIntoView({ behavior: "smooth" });
+
+        // Store current trip data so Save/PDF/Map can use it
+        // window.currentTrip stores it globally in the browser tab
+        window.currentTrip = {
+          ...data.trip,
+          itinerary: data.itinerary
+        };
+
+      } catch (error) {
+        // "catch" runs if anything in the "try" block failed:
+        //   - The server was not running (connection refused)
+        //   - The server sent back a 4xx or 5xx error
+        //   - The JSON was malformed
+
+        // error.message is a human-readable description of what went wrong
+        showError(
+          error.message.includes('fetch')
+            ? '❌ Cannot connect to server. Is it running? Run: node server.js'
+            : `❌ ${error.message}`
+        );
+
+      } finally {
+        // "finally" always runs — whether try succeeded or catch ran.
+        // Use it to clean up: reset the button regardless of outcome.
+        btn.textContent = "✨ Generate My Itinerary";
+        btn.disabled = false;
+      }
+    }
+
+    // -------------------------------------------------------
+    // RENDER: Builds the day cards HTML and inserts into page
+    // -------------------------------------------------------
+    function renderItinerary(itinerary) {
+      // Get the container element where we'll put the cards
+      const output = document.getElementById("itinerary-output");
+
+      // Clear anything that was there before
+      output.innerHTML = "";
+
+      // Loop through each day in the itinerary array
+      // forEach runs the function once for each item
+      itinerary.forEach(function (day) {
+
+        // Build the activities HTML for this day
+        // map() transforms each activity object into an HTML string
+        // join("") combines all the strings into one
+        const activitiesHTML = day.activities
+          .map(function (act) {
+            return `
+              <div class="activity-item">
+                <span class="activity-time">${act.time}</span>
+                <div class="activity-details">
+                  <p class="activity-name">${act.activity}</p>
+                  <p class="activity-location">📍 ${act.location}</p>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        // Template literals (backtick strings) let us write multi-line HTML
+        // ${...} inside them inserts a variable's value
+        const dayCard = `
+          <div class="day-card">
+            <div class="day-header">
+              <span class="day-badge">Day ${day.day}</span>
+              <h3 class="day-title">${day.title}</h3>
+            </div>
+            <div class="day-activities">
+              ${activitiesHTML}
+            </div>
+          </div>
+        `;
+
+        // innerHTML += appends (adds) the new HTML to the container
+        output.innerHTML += dayCard;
+      });
+    }
+
+    // -------------------------------------------------------
+    // RENDER: Builds the day cards HTML and inserts into page
+    // (Unchanged from Phase 1 — this part stays on the frontend)
+    // -------------------------------------------------------
+    function renderItinerary(itinerary) {
+      const output = document.getElementById("itinerary-output");
+      output.innerHTML = "";
+
+      itinerary.forEach(function (day) {
+        const activitiesHTML = day.activities
+          .map(function (act) {
+            return `
+              <div class="activity-item">
+                <span class="activity-time">${act.time}</span>
+                <div class="activity-details">
+                  <p class="activity-name">${act.activity}</p>
+                  <p class="activity-location">📍 ${act.location}</p>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        output.innerHTML += `
+          <div class="day-card">
+            <div class="day-header">
+              <span class="day-badge">Day ${day.day}</span>
+              <h3 class="day-title">${day.title}</h3>
+            </div>
+            <div class="day-activities">
+              ${activitiesHTML}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    // -------------------------------------------------------
+    // ERROR HELPERS: Show/hide a friendly error banner
+    // -------------------------------------------------------
+    function showError(message) {
+      // Check if an error box already exists; if not, create one
+      let errorBox = document.getElementById("error-box");
+
+      if (!errorBox) {
+        errorBox = document.createElement("div");
+        errorBox.id = "error-box";
+        errorBox.style.cssText = `
+          background: #fef2f2;
+          border: 1.5px solid #fca5a5;
+          color: #b91c1c;
+          border-radius: 8px;
+          padding: 1rem 1.25rem;
+          margin-top: 1rem;
+          font-size: 0.9rem;
+          font-weight: 500;
+        `;
+
+        // Insert the error box after the form card
+        const formCard = document.querySelector(".form-card");
+        formCard.parentNode.insertBefore(errorBox, formCard.nextSibling);
+      }
+
+      errorBox.textContent = message;
+      errorBox.style.display = "block";
+    }
+
+    function hideError() {
+      const errorBox = document.getElementById("error-box");
+      if (errorBox) errorBox.style.display = "none";
+    }
+
+    // -------------------------------------------------------
+    // ACTION FUNCTIONS: Save, PDF, Map (placeholders for now)
+    // These will be fully built in Phases 4, 5, and 6.
+    // -------------------------------------------------------
+
+    async function saveTrip() {
+      // Check if we have a trip to save
+      if (!window.currentTrip) {
+        alert("Generate a trip first!");
+        return;
+      }
+
+      try {
+        // Send the current trip to the backend's save endpoint
+        const response = await fetch(`${API_BASE}/api/trips`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(window.currentTrip)
+        });
+
+        const data = await response.json();
+        alert(`✅ ${data.message}`);
+
+      } catch (error) {
+        alert("❌ Could not save trip. Is the server running?");
+      }
+    }
+
+    function exportPDF() {
+      // Phase 5: Will use jsPDF to generate a downloadable PDF
+      alert("📄 PDF export coming in Phase 5!");
+    }
+
+    function viewMap() {
+      // Phase 6: Will show locations on a Leaflet map
+      alert("🗺️ Map view coming in Phase 6!");
+    }
+  </script>
+
+</body>
+</html>

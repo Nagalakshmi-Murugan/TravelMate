@@ -1,0 +1,619 @@
+/*
+  ================================================================
+  TravelMate AI — style.css
+  ================================================================
+  CSS controls how every element LOOKS: colors, fonts, spacing,
+  layout, and animations.
+
+  How CSS works:
+    selector { property: value; }
+
+  Example:
+    h1 { color: red; font-size: 32px; }
+  This means: find every <h1> tag and make its text red and 32px big.
+
+  We use "classes" (.class-name) to style specific elements.
+  ================================================================
+*/
+
+/* ============================================================
+   1. DESIGN TOKENS — Our color & font palette
+   ============================================================
+   CSS variables (custom properties) let us define colors once
+   and reuse them everywhere. If we want to change the main color,
+   we only need to update it here — not in 50 places.
+
+   :root means "apply these to the entire page".
+   --variable-name: value;  defines a variable.
+   var(--variable-name)     uses it later.
+*/
+:root {
+  /* Color palette */
+  --ink: #1a1a2e;          /* Deep navy — headings and dark text */
+  --body: #2d2d44;         /* Slightly lighter — paragraph text */
+  --muted: #6b7280;        /* Gray — secondary text, labels */
+  --accent: #e8821a;       /* Warm amber — call-to-action color */
+  --accent-dark: #c96e10;  /* Darker amber — hover states */
+  --sky: #0ea5e9;          /* Sky blue — alternate accent */
+  --surface: #ffffff;      /* White — card backgrounds */
+  --bg: #f8f7f4;           /* Off-white — page background */
+  --bg-alt: #f0ede8;       /* Slightly warmer — alternate sections */
+  --border: #e5e0d8;       /* Light tan — borders and dividers */
+
+  /* Typography */
+  --font-display: 'Playfair Display', Georgia, serif;  /* For headings */
+  --font-body: 'Inter', system-ui, sans-serif;         /* For body text */
+
+  /* Spacing scale — consistent gaps throughout the page */
+  --space-xs: 0.5rem;   /* 8px  */
+  --space-sm: 1rem;     /* 16px */
+  --space-md: 1.5rem;   /* 24px */
+  --space-lg: 2.5rem;   /* 40px */
+  --space-xl: 4rem;     /* 64px */
+
+  /* Border radius — how rounded corners are */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================================
+   2. RESET & BASE STYLES
+   ============================================================
+   Browsers apply their own default styles which look different
+   across Chrome, Firefox, Safari, etc. We "reset" them first
+   so we have a clean, consistent starting point.
+*/
+
+/* The * selector means "apply to EVERYTHING on the page" */
+*, *::before, *::after {
+  /* box-sizing: border-box makes width/height include padding & border.
+     This prevents elements from unexpectedly growing larger than expected. */
+  box-sizing: border-box;
+
+  /* Remove all browser-default margins and padding */
+  margin: 0;
+  padding: 0;
+}
+
+/* Base styles for the <html> element */
+html {
+  /* scroll-behavior: smooth makes anchor links (#section) animate
+     instead of jumping instantly */
+  scroll-behavior: smooth;
+}
+
+/* Base styles for the <body> */
+body {
+  font-family: var(--font-body);
+  font-size: 1rem;          /* 16px — comfortable reading size */
+  line-height: 1.6;         /* Space between lines of text */
+  color: var(--body);
+  background-color: var(--bg);
+
+  /* Prevent horizontal scroll on mobile */
+  overflow-x: hidden;
+}
+
+/* Default heading styles */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  color: var(--ink);
+  line-height: 1.2;         /* Tighter line spacing for big text */
+}
+
+/* Remove the dot bullets from <ul> lists by default */
+ul {
+  list-style: none;
+}
+
+/* Remove underlines from links by default */
+a {
+  text-decoration: none;
+  color: inherit;           /* Inherit the color from parent element */
+}
+
+/* ============================================================
+   3. UTILITY CLASSES
+   ============================================================
+   Small reusable classes we can add to any element.
+*/
+
+/* .container centers content and limits its max width */
+.container {
+  width: 100%;
+  max-width: 800px;         /* Never wider than 800px */
+  margin: 0 auto;           /* Center horizontally (auto left+right margins) */
+  padding: 0 var(--space-sm);
+}
+
+/* .section adds vertical breathing room between page sections */
+.section {
+  padding: var(--space-xl) 0;
+}
+
+/* .section-alt uses the slightly different background for visual rhythm */
+.section-alt {
+  background-color: var(--bg-alt);
+}
+
+/* Section headings area */
+.section-header {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.section-title {
+  font-size: 2rem;
+  margin-bottom: var(--space-xs);
+}
+
+.section-subtitle {
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+/* ============================================================
+   4. BUTTONS
+   ============================================================
+   We have two button styles: filled (primary) and outlined.
+*/
+
+/* Base button styles shared by all buttons */
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.75rem;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 2px solid transparent;   /* Transparent by default */
+  cursor: pointer;                  /* Shows hand cursor on hover */
+
+  /* transition: smooth animation when properties change (on hover etc.) */
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+/* Primary button — filled amber background */
+.btn-primary {
+  background-color: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+/* :hover applies styles when the mouse hovers over the element */
+.btn-primary:hover {
+  background-color: var(--accent-dark);
+  border-color: var(--accent-dark);
+
+  /* transform: moves/scales the element visually */
+  transform: translateY(-1px);  /* Move up 1px — subtle lift effect */
+}
+
+/* Outline button — transparent with a border */
+.btn-outline {
+  background-color: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-outline:hover {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+
+/* Full-width button */
+.btn-full {
+  width: 100%;
+  text-align: center;
+  margin-top: var(--space-sm);
+}
+
+/* Disabled state */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ============================================================
+   5. NAVBAR
+   ============================================================
+*/
+
+.navbar {
+  position: sticky;    /* Sticks to the top as you scroll down */
+  top: 0;
+  z-index: 100;        /* Stays on top of other elements */
+  background: rgba(255, 255, 255, 0.95);
+
+  /* backdrop-filter: blurs what's behind the navbar (frosted glass) */
+  backdrop-filter: blur(8px);
+
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--space-sm);
+}
+
+/* Inner row: brand on left, links on right */
+.nav-inner {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;                  /* Flexbox = side-by-side layout */
+  align-items: center;            /* Vertically centered */
+  justify-content: space-between; /* Space between brand and links */
+  height: 64px;
+}
+
+/* Brand / logo area */
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.nav-icon {
+  font-size: 1.5rem;
+}
+
+/* The "AI" part of the brand has an amber highlight */
+.nav-ai {
+  color: var(--accent);
+}
+
+/* Nav links: horizontal row */
+.nav-links {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.nav-links a {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--body);
+  transition: color 0.2s;
+}
+
+.nav-links a:hover {
+  color: var(--accent);
+}
+
+/* ============================================================
+   6. HERO SECTION
+   ============================================================
+*/
+
+.hero {
+  /* background: gradient from deep navy to dark blue-purple */
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  color: #ffffff;
+  padding: var(--space-xl) var(--space-sm);
+  text-align: center;
+
+  /* Decorative pattern overlay using SVG data URI */
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+.hero-inner {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+/* Small label above the main headline */
+.hero-eyebrow {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;       /* Wide letter spacing */
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--space-sm);
+}
+
+.hero-headline {
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  /* clamp(min, preferred, max) — font scales with screen size */
+  color: #ffffff;
+  margin-bottom: var(--space-sm);
+  line-height: 1.1;
+}
+
+.hero-sub {
+  font-size: 1.05rem;
+  color: rgba(255, 255, 255, 0.75);
+  max-width: 480px;
+  margin: 0 auto var(--space-lg);
+  line-height: 1.7;
+}
+
+/* ============================================================
+   7. PLANNER FORM
+   ============================================================
+*/
+
+/* The white card containing the form */
+.form-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+}
+
+/* A row holds one or two form fields side by side */
+.form-row {
+  display: grid;
+
+  /*
+    grid-template-columns: repeat(2, 1fr)
+    Creates 2 equal columns. "1fr" means "1 fraction of available space".
+    On mobile, we override this to 1 column (see responsive section below).
+  */
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+/* A group is one label + one input */
+.form-group {
+  display: flex;
+  flex-direction: column;   /* Stack label above input */
+  gap: 6px;
+}
+
+/* full-width makes the field span both columns */
+.form-group.full-width {
+  grid-column: 1 / -1;     /* Start at column 1, end at last column */
+}
+
+/* Label text */
+.form-group label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* All input and select fields share these styles */
+.form-group input,
+.form-group select {
+  padding: 0.7rem 1rem;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s, box-shadow 0.2s;
+
+  /* Remove the default browser appearance for selects on some systems */
+  -webkit-appearance: none;
+  appearance: none;
+
+  /* For <select>, add a dropdown arrow icon via background */
+  background-image: none;
+}
+
+/* Custom dropdown arrow for <select> */
+.form-group select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
+
+/* :focus styles apply when the user clicks into a field */
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;                        /* Remove default browser outline */
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 130, 26, 0.15);  /* Soft glow */
+}
+
+/* ============================================================
+   8. ITINERARY DAY CARDS
+   ============================================================
+*/
+
+/* Container holding all day cards */
+#itinerary-output {
+  display: flex;
+  flex-direction: column;   /* Stack cards vertically */
+  gap: var(--space-md);
+}
+
+/* Each day is one card */
+.day-card {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+
+  /* Animation: fade in and slide up when card appears */
+  animation: fadeInUp 0.4s ease both;
+}
+
+/* @keyframes defines an animation sequence */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);  /* Start 16px lower */
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);     /* End at normal position */
+  }
+}
+
+/* Header bar of each day card */
+.day-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+
+  /* Subtle gradient background for the header */
+  background: linear-gradient(90deg, #1a1a2e, #0f3460);
+  color: #ffffff;
+}
+
+/* The "Day 1", "Day 2" badge */
+.day-badge {
+  background-color: var(--accent);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;   /* Don't wrap to next line */
+}
+
+.day-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* All activities inside a day card */
+.day-activities {
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* One activity row: time on left, details on right */
+.activity-item {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;   /* Align to top */
+
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px dashed var(--border);
+}
+
+/* Remove border from the last activity */
+.activity-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* Time label: e.g. "09:00 AM" */
+.activity-time {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  min-width: 80px;   /* Always same width so details align */
+  padding-top: 2px;
+}
+
+/* Activity description and location */
+.activity-details {
+  flex: 1;   /* Take up remaining space */
+}
+
+.activity-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+
+.activity-location {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* ============================================================
+   9. RESULTS ACTIONS (buttons below itinerary)
+   ============================================================
+*/
+
+.results-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;             /* Wrap to next line on small screens */
+  justify-content: center;
+  margin-top: var(--space-lg);
+}
+
+/* ============================================================
+   10. EMPTY STATE (for saved trips)
+   ============================================================
+*/
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-xl) var(--space-sm);
+  color: var(--muted);
+}
+
+.empty-icon {
+  font-size: 3.5rem;
+  margin-bottom: var(--space-sm);
+}
+
+/* ============================================================
+   11. FOOTER
+   ============================================================
+*/
+
+.footer {
+  background-color: var(--ink);
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+  padding: var(--space-md);
+  font-size: 0.875rem;
+}
+
+/* ============================================================
+   12. RESPONSIVE — Mobile Adjustments
+   ============================================================
+   @media queries apply styles only when conditions are true.
+   "max-width: 600px" means: "only on screens 600px wide or less"
+   i.e., phones.
+*/
+
+@media (max-width: 600px) {
+
+  /* Stack form fields to 1 column on phones */
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* Slightly smaller form card padding */
+  .form-card {
+    padding: var(--space-md);
+  }
+
+  /* Stack action buttons vertically on small screens */
+  .results-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* Make all buttons full width on mobile */
+  .results-actions .btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Shrink activity time label on tiny screens */
+  .activity-time {
+    min-width: 70px;
+    font-size: 0.75rem;
+  }
+}
