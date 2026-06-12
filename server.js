@@ -30,6 +30,12 @@ const cors = require('cors');
 // path.join() handles this automatically.
 const path = require('path');
 
+// Our own rule-based itinerary engine (Phase 3 — revised).
+// The './' means "look in the same folder as this file".
+// We destructure to pull out just the function we need.
+// No API keys, no network calls — pure JavaScript logic.
+const itineraryEngine = require('./itineraryEngine');
+
 
 // --- 2. CREATE THE EXPRESS APP ---
 
@@ -98,128 +104,74 @@ app.get('/api/health', function (req, res) {
 });
 
 
-// --- ROUTE 2: Generate Itinerary (Dummy for now) ---
+// --- ROUTE 2: Generate Itinerary with Rule-Based Engine ---
 // POST /api/generate
 //
-// The frontend sends trip details here, and we return an itinerary.
-// Right now it returns dummy data — in Phase 3 we'll connect Gemini AI.
+// PHASE 3 (REVISED): No external AI, no API keys, no network
+// calls. itineraryEngine.generate() is a plain, synchronous
+// JavaScript function — it runs instantly, so this route
+// doesn't even need to be "async" or use "await".
 //
-// Why POST and not GET?
-//   GET is for "give me data" — the data lives in the URL.
-//   POST is for "here's data, do something" — the data lives in the body.
-//   Sending a destination, dates, budget in a URL would be messy and
-//   insecure. POST puts it in the request body, which is cleaner.
+// This is a great interview talking point: "the itinerary
+// generation is a pure function — given the same inputs (and
+// ignoring the random shuffle), it's fast, predictable, and
+// has zero external dependencies or costs."
 app.post('/api/generate', function (req, res) {
 
-  // req.body contains the data the frontend sent us.
-  // We "destructure" it: pull out specific keys into variables.
-  // This is shorthand for:
-  //   const destination = req.body.destination;
-  //   const startDate = req.body.startDate;  etc.
   const { destination, startDate, endDate, budget, style } = req.body;
 
-  // --- Input Validation ---
-  // Never trust data from the frontend. Always validate on the server.
-  // If required fields are missing, send back a 400 error.
-  //
-  // HTTP Status Codes are three-digit numbers:
-  //   200 = OK (success)
-  //   400 = Bad Request (client sent wrong/missing data)
-  //   404 = Not Found (route doesn't exist)
-  //   500 = Internal Server Error (something crashed on our end)
-
+  // --- Input Validation (unchanged from Phase 2) ---
   if (!destination || !startDate || !endDate || !budget || !style) {
-    // res.status(400) sets the HTTP status code.
-    // .json({ error: '...' }) sends the error message as JSON.
     return res.status(400).json({
       error: 'Missing required fields: destination, startDate, endDate, budget, style'
     });
   }
 
-  // Calculate number of days (same logic as Phase 1 frontend)
   const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffMs = end - start;
-  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const end   = new Date(endDate);
+  const days  = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
 
   if (days < 1) {
-    return res.status(400).json({
-      error: 'End date must be after start date'
-    });
+    return res.status(400).json({ error: 'End date must be after start date' });
   }
 
-  // --- Build Dummy Itinerary ---
-  // Same structure as Phase 1, but now it runs on the SERVER
-  // instead of the browser. In Phase 3, this gets replaced with
-  // a real call to the Gemini AI API.
-
-  const sampleActivities = {
-    adventure: [
-      { time: '08:00 AM', activity: 'Morning hike to a scenic viewpoint', location: 'City Outskirts' },
-      { time: '12:00 PM', activity: 'Picnic lunch by the waterfall', location: 'Nature Reserve' },
-      { time: '03:00 PM', activity: 'Rock climbing session with a local guide', location: 'Climbing Park' },
-      { time: '07:00 PM', activity: 'Campfire dinner at the campsite', location: 'Base Camp' },
-    ],
-    cultural: [
-      { time: '09:00 AM', activity: 'Visit the Old Town historic district', location: 'Old Town' },
-      { time: '11:30 AM', activity: 'Guided tour of the National Museum', location: 'City Center' },
-      { time: '01:30 PM', activity: 'Traditional lunch at a local tavern', location: 'Market Square' },
-      { time: '04:00 PM', activity: 'Evening walking tour of ancient landmarks', location: 'Heritage Zone' },
-    ],
-    relaxation: [
-      { time: '09:00 AM', activity: 'Sunrise yoga on the rooftop', location: 'Hotel Terrace' },
-      { time: '11:00 AM', activity: 'Full-body spa treatment', location: 'Wellness Spa' },
-      { time: '01:00 PM', activity: 'Light lunch at the garden café', location: 'Botanical Garden' },
-      { time: '04:00 PM', activity: 'Sunset stroll along the beach promenade', location: 'Seafront' },
-    ],
-    foodie: [
-      { time: '08:00 AM', activity: 'Breakfast at the famous local bakery', location: 'Old Market' },
-      { time: '11:00 AM', activity: 'Street food tour with a local foodie guide', location: 'Food District' },
-      { time: '02:00 PM', activity: 'Cooking class — learn regional recipes', location: 'Culinary School' },
-      { time: '07:00 PM', activity: 'Fine dining tasting menu at a top-rated restaurant', location: 'Restaurant Row' },
-    ],
-    budget: [
-      { time: '08:30 AM', activity: 'Free walking tour of the city center', location: 'Town Hall' },
-      { time: '12:00 PM', activity: 'Lunch at a local market stall', location: 'Central Market' },
-      { time: '02:00 PM', activity: 'Visit the free public art gallery', location: 'Arts District' },
-      { time: '06:00 PM', activity: 'Sunset picnic at the public park', location: 'City Park' },
-    ],
-    luxury: [
-      { time: '08:00 AM', activity: 'Private breakfast on the penthouse terrace', location: 'Luxury Hotel' },
-      { time: '10:30 AM', activity: 'Helicopter city tour over the skyline', location: 'Helipad' },
-      { time: '01:00 PM', activity: 'Michelin-star lunch reservation', location: 'Fine Dining District' },
-      { time: '08:00 PM', activity: 'Private sunset yacht cruise with champagne', location: 'Marina' },
-    ],
-  };
-
-  const activities = sampleActivities[style] || sampleActivities['cultural'];
-
-  // Build the itinerary array — one object per day
-  const itinerary = [];
-
-  for (let i = 1; i <= days; i++) {
-    itinerary.push({
-      day: i,
-      title: `Day ${i} in ${destination}`,
-      activities: activities
-    });
-  }
-
-  // Send the response back to the frontend as JSON.
-  // We include all the original trip details plus the generated itinerary.
-  // The frontend will use this data to render the UI.
-  res.json({
-    success: true,
-    trip: {
+  // --- Call the Rule-Based Engine ---
+  // We still wrap this in try/catch as good practice — if any
+  // unexpected error occurs (e.g. a bad date), we don't want
+  // the server to crash. But unlike Gemini, this code has no
+  // network calls, so errors here would only be bugs in our
+  // own logic — good to catch during development.
+  try {
+    // generate() is synchronous — no "await" needed.
+    // It returns { summary, budgetTier, itinerary }
+    const result = itineraryEngine.generate({
       destination,
       startDate,
       endDate,
       budget,
       style,
       days,
-    },
-    itinerary: itinerary
-  });
+    });
+
+    // Success — send the generated itinerary back to the frontend.
+    // We spread the trip details AND include the engine's extra
+    // info (summary, budgetTier) so the frontend can display them.
+    res.json({
+      success: true,
+      trip: { destination, startDate, endDate, budget, style, days },
+      summary: result.summary,
+      budgetTier: result.budgetTier,
+      itinerary: result.itinerary,
+    });
+
+  } catch (error) {
+    // Log the full error in the terminal for debugging
+    console.error('\n❌ /api/generate error:', error.message);
+
+    res.status(500).json({
+      error: error.message || 'Failed to generate itinerary. Please try again.'
+    });
+  }
 });
 
 

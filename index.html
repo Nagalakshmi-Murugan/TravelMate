@@ -19,7 +19,7 @@
     Without this, mobile browsers zoom out and make everything tiny.
   -->
 
-  <title>TravelMate AI — Plan Your Perfect Trip</title>
+  <title>TravelMate — Plan Your Perfect Trip</title>
 
   <!-- Link to Google Fonts — we're using two fonts:
        'Playfair Display' for headings (elegant, travel-magazine feel)
@@ -51,7 +51,7 @@
       <!-- Brand logo area -->
       <div class="nav-brand">
         <span class="nav-icon">✈️</span>
-        <span class="nav-title">TravelMate <span class="nav-ai">AI</span></span>
+        <span class="nav-title">TravelMate</span>
       </div>
 
       <!-- Navigation links -->
@@ -69,10 +69,10 @@
   -->
   <header class="hero">
     <div class="hero-inner">
-      <p class="hero-eyebrow">AI-Powered Travel Planning</p>
+      <p class="hero-eyebrow">Smart Travel Planning</p>
       <h1 class="hero-headline">Your Dream Trip,<br />Planned in Seconds</h1>
       <p class="hero-sub">
-        Tell us where you want to go. Our AI builds a full day-by-day itinerary
+        Tell us where you want to go. We build a full day-by-day itinerary
         tailored to your budget and travel style.
       </p>
       <!-- Clicking this scrolls the user down to the form -->
@@ -90,7 +90,7 @@
 
       <div class="section-header">
         <h2 class="section-title">Plan Your Trip</h2>
-        <p class="section-subtitle">Fill in the details and let AI do the rest</p>
+        <p class="section-subtitle">Fill in the details and let us do the rest</p>
       </div>
 
       <!-- The form card — visually a white card with a shadow -->
@@ -194,6 +194,24 @@
     </div>
   </section>
 
+  <!-- ==================== GENERATING BANNER ==================== -->
+  <!--
+    This banner is hidden by default.
+    Our rule-based engine is actually instant, but we show a brief
+    banner anyway so the UI feels responsive and the user gets
+    visual confirmation that their click registered.
+  -->
+  <div id="loading-banner" style="display:none;">
+    <div class="loading-inner">
+      <div class="loading-spinner"></div>
+      <div>
+        <p class="loading-title">✈️ Building your itinerary…</p>
+        <p class="loading-sub">Picking activities that match your budget and travel style.</p>
+      </div>
+    </div>
+  </div>
+
+
   <!-- ==================== RESULTS SECTION ==================== -->
   <!--
     This section starts hidden (display: none in CSS).
@@ -207,6 +225,8 @@
         <!-- This heading will be updated by JavaScript with the destination name -->
         <h2 class="section-title" id="results-title">Your Itinerary</h2>
         <p class="section-subtitle" id="results-meta"></p>
+        <!-- New in Phase 3: shows the engine's summary + budget tier badge -->
+        <p class="section-subtitle" id="results-summary"></p>
       </div>
 
       <!-- The actual day-by-day cards go inside here, added by JavaScript -->
@@ -246,7 +266,7 @@
 
   <!-- ==================== FOOTER ==================== -->
   <footer class="footer">
-    <p>TravelMate AI &copy; 2025 — Built with ✈️ and a lot of ☕</p>
+    <p>TravelMate &copy; 2025 — Built with ✈️ and a lot of ☕</p>
   </footer>
 
   <!-- ==================== JAVASCRIPT ==================== -->
@@ -308,12 +328,15 @@
 
       // Show loading state
       const btn = document.getElementById("generate-btn");
-      btn.textContent = "⏳ Talking to server...";
+      btn.innerHTML = '<span class="spinner"></span> Building itinerary…';
       btn.disabled = true;
 
-      // Hide any previous error or results
+      // Hide any previous error or results, show the loading banner
       hideError();
       document.getElementById("results").style.display = "none";
+      document.getElementById("loading-banner").style.display = "block";
+      // Scroll to the loading banner so the user sees it
+      document.getElementById("loading-banner").scrollIntoView({ behavior: "smooth" });
 
       // ----------------------------------------------------------
       // THE KEY PART: Send a POST request to our Express server
@@ -373,6 +396,16 @@
         document.getElementById("results-meta").textContent =
           `${formattedStart} → ${formattedEnd} · ${data.trip.days} days · $${data.trip.budget} budget`;
 
+        // Phase 3: Show the engine's generated summary + budget tier badge.
+        // data.summary and data.budgetTier come from itineraryEngine.js
+        const budgetTierLabels = {
+          low: '🪙 Budget-Friendly',
+          medium: '💼 Mid-Range',
+          high: '💎 Luxury'
+        };
+        document.getElementById("results-summary").textContent =
+          `${data.summary} · ${budgetTierLabels[data.budgetTier] || data.budgetTier}`;
+
         // Render the day cards (same function as Phase 1)
         renderItinerary(data.itinerary);
 
@@ -403,8 +436,9 @@
 
       } finally {
         // "finally" always runs — whether try succeeded or catch ran.
-        // Use it to clean up: reset the button regardless of outcome.
-        btn.textContent = "✨ Generate My Itinerary";
+        // Always hide the loading banner and reset the button.
+        document.getElementById("loading-banner").style.display = "none";
+        btn.innerHTML = "✨ Generate My Itinerary";
         btn.disabled = false;
       }
     }
@@ -412,57 +446,13 @@
     // -------------------------------------------------------
     // RENDER: Builds the day cards HTML and inserts into page
     // -------------------------------------------------------
-    function renderItinerary(itinerary) {
-      // Get the container element where we'll put the cards
-      const output = document.getElementById("itinerary-output");
-
-      // Clear anything that was there before
-      output.innerHTML = "";
-
-      // Loop through each day in the itinerary array
-      // forEach runs the function once for each item
-      itinerary.forEach(function (day) {
-
-        // Build the activities HTML for this day
-        // map() transforms each activity object into an HTML string
-        // join("") combines all the strings into one
-        const activitiesHTML = day.activities
-          .map(function (act) {
-            return `
-              <div class="activity-item">
-                <span class="activity-time">${act.time}</span>
-                <div class="activity-details">
-                  <p class="activity-name">${act.activity}</p>
-                  <p class="activity-location">📍 ${act.location}</p>
-                </div>
-              </div>
-            `;
-          })
-          .join("");
-
-        // Template literals (backtick strings) let us write multi-line HTML
-        // ${...} inside them inserts a variable's value
-        const dayCard = `
-          <div class="day-card">
-            <div class="day-header">
-              <span class="day-badge">Day ${day.day}</span>
-              <h3 class="day-title">${day.title}</h3>
-            </div>
-            <div class="day-activities">
-              ${activitiesHTML}
-            </div>
-          </div>
-        `;
-
-        // innerHTML += appends (adds) the new HTML to the container
-        output.innerHTML += dayCard;
-      });
-    }
-
-    // -------------------------------------------------------
-    // RENDER: Builds the day cards HTML and inserts into page
-    // (Unchanged from Phase 1 — this part stays on the frontend)
-    // -------------------------------------------------------
+    //
+    // PHASE 3 UPDATE:
+    //   Our rule-based engine now returns extra fields per
+    //   activity (cost, tip) and per day (date). We display
+    //   those here. The structure mirrors the data shape
+    //   returned by itineraryEngine.js — keeping frontend and
+    //   backend "in sync" on data shape is an important skill.
     function renderItinerary(itinerary) {
       const output = document.getElementById("itinerary-output");
       output.innerHTML = "";
@@ -476,6 +466,8 @@
                 <div class="activity-details">
                   <p class="activity-name">${act.activity}</p>
                   <p class="activity-location">📍 ${act.location}</p>
+                  <p class="activity-cost">💵 ${act.cost}</p>
+                  <p class="activity-tip">💡 ${act.tip}</p>
                 </div>
               </div>
             `;
@@ -486,7 +478,10 @@
           <div class="day-card">
             <div class="day-header">
               <span class="day-badge">Day ${day.day}</span>
-              <h3 class="day-title">${day.title}</h3>
+              <div>
+                <h3 class="day-title">${day.title}</h3>
+                <p class="day-date">${day.date || ''}</p>
+              </div>
             </div>
             <div class="day-activities">
               ${activitiesHTML}
@@ -495,6 +490,7 @@
         `;
       });
     }
+
 
     // -------------------------------------------------------
     // ERROR HELPERS: Show/hide a friendly error banner

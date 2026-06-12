@@ -617,3 +617,106 @@ a {
     font-size: 0.75rem;
   }
 }
+
+/* ============================================================
+   13. PHASE 3 — LOADING BANNER & SPINNER
+   ============================================================
+*/
+
+/* Full-width banner shown while Gemini is generating */
+#loading-banner {
+  background: linear-gradient(90deg, #1a1a2e, #0f3460);
+  color: #ffffff;
+  padding: var(--space-md) var(--space-sm);
+}
+
+.loading-inner {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.loading-title {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.loading-sub {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* The spinning circle animation */
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;  /* Prevent squishing in flex */
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;           /* Makes it a circle */
+
+  /* @keyframes spin rotates it 360° infinitely */
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Small inline spinner for the generate button */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+
+  /* inline-flex to align spinner with button text */
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* ============================================================
+   14. PHASE 3 — RULE-BASED ENGINE DISPLAY ELEMENTS
+   ============================================================
+   New fields returned by itineraryEngine.js: date, cost, tip,
+   and an overall trip summary. These styles present them
+   clearly without cluttering the existing card design.
+*/
+
+/* The small date line under "Day X — Destination" */
+.day-date {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+/* Estimated cost for an activity */
+.activity-cost {
+  font-size: 0.8rem;
+  color: var(--sky);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Practical tip/advice for an activity */
+.activity-tip {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+/* The engine's generated summary line + budget tier badge,
+   shown just under the date range in the results header */
+#results-summary {
+  font-weight: 600;
+  color: var(--accent-dark);
+  margin-top: 4px;
+}
