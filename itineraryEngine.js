@@ -420,5 +420,5 @@ function generate(tripDetails) {
 // All other functions (shuffleArray, classifyBudget, etc.) are
 // private helpers. This is called "encapsulation" — hiding
 // internal implementation details from the outside world.
-
+ 
 module.exports = { generate };

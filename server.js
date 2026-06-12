@@ -1,5 +1,5 @@
 // ============================================================
-// server.js — The TravelMate AI Express Server
+// server.js — The TravelMate Express Server
 // ============================================================
 //
 // In Node.js, we use "require()" to import packages.
@@ -98,7 +98,7 @@ app.get('/api/health', function (req, res) {
   // communicate — it's just a structured text format.
   res.json({
     status: 'ok',
-    message: 'TravelMate AI server is running!',
+    message: 'TravelMate server is running!',
     timestamp: new Date().toISOString()
   });
 });
@@ -107,7 +107,7 @@ app.get('/api/health', function (req, res) {
 // --- ROUTE 2: Generate Itinerary with Rule-Based Engine ---
 // POST /api/generate
 //
-// PHASE 3 (REVISED): No external AI, no API keys, no network
+// PHASE 3 (REVISED): No external services, no API keys, no network
 // calls. itineraryEngine.generate() is a plain, synchronous
 // JavaScript function — it runs instantly, so this route
 // doesn't even need to be "async" or use "await".
@@ -138,7 +138,7 @@ app.post('/api/generate', function (req, res) {
   // --- Call the Rule-Based Engine ---
   // We still wrap this in try/catch as good practice — if any
   // unexpected error occurs (e.g. a bad date), we don't want
-  // the server to crash. But unlike Gemini, this code has no
+  // the server to crash. This code has no
   // network calls, so errors here would only be bugs in our
   // own logic — good to catch during development.
   try {
@@ -244,10 +244,10 @@ app.use(function (req, res) {
 // The callback function runs once the server successfully starts.
 app.listen(PORT, function () {
   console.log('');
-  console.log('🚀 TravelMate AI server is running!');
+  console.log('🚀 TravelMate server is running!');
   console.log(`📍 Local:   http://localhost:${PORT}`);
   console.log(`🔍 Health:  http://localhost:${PORT}/api/health`);
   console.log('');
   console.log('Press Ctrl+C to stop the server.');
   console.log('');
-});
+}); 

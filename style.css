@@ -1,6 +1,6 @@
 /*
   ================================================================
-  TravelMate AI — style.css
+  TravelMate — style.css
   ================================================================
   CSS controls how every element LOOKS: colors, fonts, spacing,
   layout, and animations.
@@ -264,7 +264,7 @@ a {
   font-size: 1.5rem;
 }
 
-/* The "AI" part of the brand has an amber highlight */
+/* Removed: no longer needed (brand no longer has an AI suffix) */
 .nav-ai {
   color: var(--accent);
 }
@@ -623,7 +623,7 @@ a {
    ============================================================
 */
 
-/* Full-width banner shown while Gemini is generating */
+/* Full-width banner shown while the itinerary is generating */
 #loading-banner {
   background: linear-gradient(90deg, #1a1a2e, #0f3460);
   color: #ffffff;
@@ -718,5 +718,5 @@ a {
 #results-summary {
   font-weight: 600;
   color: var(--accent-dark);
-  margin-top: 4px;
+  margin-top: 4px; 
 }
