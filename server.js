@@ -1,5 +1,5 @@
 // ============================================================
-// server.js — The TravelMate Express Server
+// server.js — The TravelMate AI Express Server
 // ============================================================
 //
 // In Node.js, we use "require()" to import packages.
@@ -35,6 +35,13 @@ const path = require('path');
 // We destructure to pull out just the function we need.
 // No API keys, no network calls — pure JavaScript logic.
 const itineraryEngine = require('./itineraryEngine');
+
+// Our MySQL connection pool (Phase 4).
+// db.js handles all connection configuration — here we just
+// import the ready-to-use pool and call .query() / .execute() on it.
+const pool = require('./db');
+console.log('POOL TYPE:', typeof pool);
+console.log('POOL KEYS:', Object.keys(pool));
 
 
 // --- 2. CREATE THE EXPRESS APP ---
@@ -98,7 +105,7 @@ app.get('/api/health', function (req, res) {
   // communicate — it's just a structured text format.
   res.json({
     status: 'ok',
-    message: 'TravelMate server is running!',
+    message: 'TravelMate AI server is running!',
     timestamp: new Date().toISOString()
   });
 });
@@ -107,7 +114,7 @@ app.get('/api/health', function (req, res) {
 // --- ROUTE 2: Generate Itinerary with Rule-Based Engine ---
 // POST /api/generate
 //
-// PHASE 3 (REVISED): No external services, no API keys, no network
+// PHASE 3 (REVISED): No external AI, no API keys, no network
 // calls. itineraryEngine.generate() is a plain, synchronous
 // JavaScript function — it runs instantly, so this route
 // doesn't even need to be "async" or use "await".
@@ -138,7 +145,7 @@ app.post('/api/generate', function (req, res) {
   // --- Call the Rule-Based Engine ---
   // We still wrap this in try/catch as good practice — if any
   // unexpected error occurs (e.g. a bad date), we don't want
-  // the server to crash. This code has no
+  // the server to crash. But unlike Gemini, this code has no
   // network calls, so errors here would only be bugs in our
   // own logic — good to catch during development.
   try {
@@ -175,52 +182,199 @@ app.post('/api/generate', function (req, res) {
 });
 
 
-// --- ROUTE 3: Save Trip (Placeholder) ---
+// --- ROUTE 3: Save Trip ---
 // POST /api/trips
 //
-// In Phase 4 this will save to MySQL.
-// For now it just echoes back the data with a placeholder message.
-app.post('/api/trips', function (req, res) {
-  const tripData = req.body;
+// PHASE 4: Inserts the trip into the MySQL "trips" table.
+//
+// "async" is needed here because pool.execute() returns a
+// Promise — it has to travel to MySQL and back, which takes time.
+app.post('/api/trips', async function (req, res) {
 
-  // Log to the terminal so you can see what was received
-  // console.log() prints to the terminal where you ran "node server.js"
-  console.log('📥 Save trip request received:', tripData.destination);
+  // Destructure everything the frontend sends us.
+  // This object shape matches window.currentTrip in index.html:
+  // { destination, startDate, endDate, budget, style, days,
+  //   summary, budgetTier, itinerary }
+  const {
+    destination, startDate, endDate, budget,
+    style, days, summary, budgetTier, itinerary
+  } = req.body;
 
-  res.json({
-    success: true,
-    message: 'Save functionality coming in Phase 4 (MySQL)',
-    received: tripData
-  });
+  // --- Validation ---
+  // Make sure we have the minimum required data before touching
+  // the database. itinerary must exist because the column is
+  // NOT NULL in our schema.
+  if (!destination || !startDate || !endDate || !budget || !style || !itinerary) {
+    return res.status(400).json({
+      error: 'Missing required trip data. Generate a trip before saving.'
+    });
+  }
+
+  try {
+    // --- THE INSERT QUERY ---
+    //
+    // SQL breakdown:
+    //   INSERT INTO trips (...)  → which table and columns
+    //   VALUES (?, ?, ?, ...)    → placeholders, one per column
+    //
+    // The second argument to pool.execute() is an ARRAY of values.
+    // mysql2 matches them to the ? placeholders IN ORDER —
+    // the 1st ? gets the 1st array value, and so on.
+    //
+    // JSON.stringify(itinerary):
+    //   Our `itinerary` variable is a JavaScript array/object.
+    //   MySQL's JSON column expects a JSON-formatted STRING.
+    //   JSON.stringify() converts our JS array into that string.
+    //   Example: [ {day:1} ]  →  '[{"day":1}]'
+    const sql = `
+      INSERT INTO trips
+        (destination, start_date, end_date, budget, style, days, summary, budget_tier, itinerary)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      destination,
+      startDate,
+      endDate,
+      budget,
+      style,
+      days,
+      summary || null,      // null if not provided — column allows NULL
+      budgetTier || null,
+      JSON.stringify(itinerary),
+    ];
+
+    // pool.execute() returns an array: [result, fields]
+    // We only need "result" here, which contains metadata about
+    // the operation — including insertId, the auto-generated ID
+    // MySQL assigned to this new row.
+    const [result] = await pool.execute(sql, values);
+
+    console.log(`✅ Trip saved: "${destination}" (id: ${result.insertId})`);
+
+    res.json({
+      success: true,
+      message: 'Trip saved successfully!',
+      tripId: result.insertId,
+    });
+
+  } catch (error) {
+    // Common causes of errors here:
+    //   - MySQL server not running
+    //   - Wrong credentials in .env
+    //   - Database/table doesn't exist (forgot to run schema.sql)
+    console.error('\n❌ /api/trips (POST) error:', error.message);
+
+    res.status(500).json({
+      error: 'Failed to save trip. Check that MySQL is running and configured correctly.'
+    });
+  }
 });
 
 
-// --- ROUTE 4: Get Saved Trips (Placeholder) ---
+// --- ROUTE 4: Get Saved Trips ---
 // GET /api/trips
 //
-// In Phase 4 this will fetch from MySQL.
-app.get('/api/trips', function (req, res) {
-  res.json({
-    success: true,
-    message: 'Fetch functionality coming in Phase 4 (MySQL)',
-    trips: []    // Empty array for now
-  });
+// PHASE 4: Fetches all saved trips from MySQL, most recent first.
+app.get('/api/trips', async function (req, res) {
+  try {
+    // pool.query() vs pool.execute():
+    //   .execute() is for queries WITH placeholders (?) — it uses
+    //   "prepared statements" which MySQL can optimise if run repeatedly.
+    //   .query() is for simple queries with NO placeholders.
+    // This query has no user input, so .query() is fine here.
+    //
+    // ORDER BY created_at DESC means "newest first" —
+    // DESC = descending order.
+    const [rows] = await pool.query(
+      'SELECT * FROM trips ORDER BY created_at DESC'
+    );
+
+    // "rows" is an array of plain JavaScript objects, one per
+    // database row, with keys matching column names exactly
+    // (e.g. row.start_date, row.budget_tier).
+    //
+    // The frontend expects camelCase keys (startDate, budgetTier)
+    // to match the rest of our app's data shape. We "map" each
+    // row into a new object with the keys renamed.
+    //
+    // We also handle the itinerary column: MySQL's mysql2 driver
+    // sometimes returns JSON columns as a string and sometimes as
+    // an already-parsed object, depending on the MySQL version.
+    // This check handles BOTH cases safely.
+    const trips = rows.map(function (row) {
+      return {
+        id:         row.id,
+        destination: row.destination,
+        startDate:  row.start_date,
+        endDate:    row.end_date,
+        budget:     row.budget,
+        style:      row.style,
+        days:       row.days,
+        summary:    row.summary,
+        budgetTier: row.budget_tier,
+        itinerary:  typeof row.itinerary === 'string'
+                      ? JSON.parse(row.itinerary)
+                      : row.itinerary,
+        createdAt:  row.created_at,
+      };
+    });
+
+    res.json({
+      success: true,
+      trips: trips,
+    });
+
+  } catch (error) {
+    console.error('\n❌ /api/trips (GET) error:', error.message);
+
+    res.status(500).json({
+      error: 'Failed to fetch saved trips. Check that MySQL is running and configured correctly.'
+    });
+  }
 });
 
 
-// --- ROUTE 5: Delete Trip (Placeholder) ---
+// --- ROUTE 5: Delete Trip ---
 // DELETE /api/trips/:id
+//
+// PHASE 4: Deletes a trip from MySQL by its id.
 //
 // The :id part is a "URL parameter" — a variable in the URL.
 // If someone calls DELETE /api/trips/42, then req.params.id = "42"
-app.delete('/api/trips/:id', function (req, res) {
+// (note: it arrives as a STRING, even though the column is INT —
+// MySQL/mysql2 handles this conversion for us automatically).
+app.delete('/api/trips/:id', async function (req, res) {
   const tripId = req.params.id;
-  console.log('🗑️  Delete trip request for ID:', tripId);
 
-  res.json({
-    success: true,
-    message: `Delete functionality coming in Phase 4. Trip ID: ${tripId}`
-  });
+  try {
+    // DELETE FROM <table> WHERE <condition>
+    // The ? placeholder is replaced with tripId safely (no SQL injection risk).
+    const [result] = await pool.execute(
+      'DELETE FROM trips WHERE id = ?',
+      [tripId]
+    );
+
+    // result.affectedRows tells us how many rows the DELETE matched.
+    // If it's 0, no trip with that id existed — return 404 (Not Found).
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: `No trip found with id ${tripId}` });
+    }
+
+    console.log(`🗑️  Trip deleted (id: ${tripId})`);
+
+    res.json({
+      success: true,
+      message: `Trip ${tripId} deleted successfully.`,
+    });
+
+  } catch (error) {
+    console.error('\n❌ /api/trips (DELETE) error:', error.message);
+
+    res.status(500).json({
+      error: 'Failed to delete trip. Check that MySQL is running and configured correctly.'
+    });
+  }
 });
 
 
@@ -242,12 +396,32 @@ app.use(function (req, res) {
 // connections on the specified PORT.
 //
 // The callback function runs once the server successfully starts.
-app.listen(PORT, function () {
+app.listen(PORT, async function () {
   console.log('');
-  console.log('🚀 TravelMate server is running!');
+  console.log('🚀 TravelMate AI server is running!');
   console.log(`📍 Local:   http://localhost:${PORT}`);
   console.log(`🔍 Health:  http://localhost:${PORT}/api/health`);
+
+  // --- PHASE 4: Test the database connection on startup ---
+  //
+  // pool.getConnection() borrows a connection from the pool just
+  // to verify MySQL is reachable with our current .env credentials.
+  // connection.release() returns it to the pool immediately —
+  // we're not using it for anything else.
+  //
+  // Doing this check at startup means you find out IMMEDIATELY
+  // if something's wrong with your database setup, rather than
+  // discovering it later when a user clicks "Save Trip".
+ try {
+  await pool.query('SELECT 1');
+  console.log('🗄️  MySQL:    connected successfully ✅');
+}  catch (error) {
+    console.log('🗄️  MySQL:    ❌ connection failed —', error.message);
+    console.log('   Check your .env file (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)');
+    console.log('   and make sure MySQL is running and schema.sql has been executed.');
+  }
+
   console.log('');
   console.log('Press Ctrl+C to stop the server.');
   console.log('');
-}); 
+});

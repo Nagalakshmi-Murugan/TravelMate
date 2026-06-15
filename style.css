@@ -1,6 +1,6 @@
 /*
   ================================================================
-  TravelMate — style.css
+  TravelMate AI — style.css
   ================================================================
   CSS controls how every element LOOKS: colors, fonts, spacing,
   layout, and animations.
@@ -264,7 +264,7 @@ a {
   font-size: 1.5rem;
 }
 
-/* Removed: no longer needed (brand no longer has an AI suffix) */
+/* The "AI" part of the brand has an amber highlight */
 .nav-ai {
   color: var(--accent);
 }
@@ -623,7 +623,7 @@ a {
    ============================================================
 */
 
-/* Full-width banner shown while the itinerary is generating */
+/* Full-width banner shown while Gemini is generating */
 #loading-banner {
   background: linear-gradient(90deg, #1a1a2e, #0f3460);
   color: #ffffff;
@@ -718,5 +718,93 @@ a {
 #results-summary {
   font-weight: 600;
   color: var(--accent-dark);
-  margin-top: 4px; 
+  margin-top: 4px;
+}
+
+/* ============================================================
+   15. PHASE 4 — SAVED TRIPS LIST
+   ============================================================
+   Each saved trip is shown as a horizontal card:
+   info on the left, action buttons on the right.
+   On mobile, it stacks vertically (see media query below).
+*/
+
+#saved-trips-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.saved-trip-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-sm) var(--space-md);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+
+  /* Reuse the same fade-in animation as itinerary day cards */
+  animation: fadeInUp 0.3s ease both;
+}
+
+.saved-trip-info h3 {
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.saved-trip-dates {
+  font-size: 0.85rem;
+  color: var(--body);
+  margin-bottom: 2px;
+}
+
+.saved-trip-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.saved-trip-actions {
+  display: flex;
+  gap: var(--space-xs);
+  flex-shrink: 0;   /* Don't let buttons shrink and wrap awkwardly */
+}
+
+/* Smaller buttons specifically for saved trip cards */
+.saved-trip-actions .btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+
+/* Red "delete" variant of the outline button */
+.btn-danger {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.btn-danger:hover {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+/* ============================================================
+   16. RESPONSIVE — Phase 4 additions
+   ============================================================
+*/
+
+@media (max-width: 600px) {
+  /* Stack saved trip card info above its action buttons */
+  .saved-trip-card {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .saved-trip-actions {
+    justify-content: center;
+  }
 }

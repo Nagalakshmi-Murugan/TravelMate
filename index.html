@@ -19,7 +19,7 @@
     Without this, mobile browsers zoom out and make everything tiny.
   -->
 
-  <title>TravelMate — Plan Your Perfect Trip</title>
+  <title>TravelMate AI — Plan Your Perfect Trip</title>
 
   <!-- Link to Google Fonts — we're using two fonts:
        'Playfair Display' for headings (elegant, travel-magazine feel)
@@ -51,7 +51,7 @@
       <!-- Brand logo area -->
       <div class="nav-brand">
         <span class="nav-icon">✈️</span>
-        <span class="nav-title">TravelMate</span>
+        <span class="nav-title">TravelMate <span class="nav-ai">AI</span></span>
       </div>
 
       <!-- Navigation links -->
@@ -69,10 +69,10 @@
   -->
   <header class="hero">
     <div class="hero-inner">
-      <p class="hero-eyebrow">Smart Travel Planning</p>
+      <p class="hero-eyebrow">AI-Powered Travel Planning</p>
       <h1 class="hero-headline">Your Dream Trip,<br />Planned in Seconds</h1>
       <p class="hero-sub">
-        Tell us where you want to go. We build a full day-by-day itinerary
+        Tell us where you want to go. Our AI builds a full day-by-day itinerary
         tailored to your budget and travel style.
       </p>
       <!-- Clicking this scrolls the user down to the form -->
@@ -90,7 +90,7 @@
 
       <div class="section-header">
         <h2 class="section-title">Plan Your Trip</h2>
-        <p class="section-subtitle">Fill in the details and let us do the rest</p>
+        <p class="section-subtitle">Fill in the details and let AI do the rest</p>
       </div>
 
       <!-- The form card — visually a white card with a shadow -->
@@ -244,8 +244,11 @@
 
   <!-- ==================== SAVED TRIPS SECTION ==================== -->
   <!--
-    This will show previously saved trips.
-    For now it's a placeholder — we'll connect it to a database in Phase 4.
+    PHASE 4: Now connected to MySQL via GET /api/trips.
+    - "saved-empty" shows when there are no trips (initial state)
+    - "saved-trips-list" is filled dynamically by loadSavedTrips()
+    Both elements are toggled by JavaScript — never both visible
+    at once.
   -->
   <section id="saved" class="section">
     <div class="container">
@@ -256,17 +259,21 @@
       </div>
 
       <!-- Empty state: shown when there are no saved trips -->
-      <div class="empty-state">
+      <div class="empty-state" id="saved-empty">
         <div class="empty-icon">🗺️</div>
         <p>No saved trips yet. Generate one and click "Save Trip"!</p>
       </div>
 
+      <!-- Saved trip cards get inserted here by JavaScript -->
+      <div id="saved-trips-list"></div>
+
     </div>
   </section>
 
+
   <!-- ==================== FOOTER ==================== -->
   <footer class="footer">
-    <p>TravelMate &copy; 2025 — Built with ✈️ and a lot of ☕</p>
+    <p>TravelMate AI &copy; 2025 — Built with ✈️ and a lot of ☕</p>
   </footer>
 
   <!-- ==================== JAVASCRIPT ==================== -->
@@ -415,9 +422,16 @@
         resultsSection.scrollIntoView({ behavior: "smooth" });
 
         // Store current trip data so Save/PDF/Map can use it
-        // window.currentTrip stores it globally in the browser tab
+        // window.currentTrip stores it globally in the browser tab.
+        //
+        // PHASE 4: We now include summary + budgetTier too, because
+        // POST /api/trips saves these into their own database columns
+        // (so the Saved Trips list can display them without
+        // re-calculating anything).
         window.currentTrip = {
           ...data.trip,
+          summary: data.summary,
+          budgetTier: data.budgetTier,
           itinerary: data.itinerary
         };
 
@@ -528,8 +542,9 @@
     }
 
     // -------------------------------------------------------
-    // ACTION FUNCTIONS: Save, PDF, Map (placeholders for now)
-    // These will be fully built in Phases 4, 5, and 6.
+    // ACTION FUNCTIONS: Save, PDF, Map
+    // PDF (Phase 5) and Map (Phase 6) are still placeholders.
+    // Save now talks to MySQL via the backend (Phase 4).
     // -------------------------------------------------------
 
     async function saveTrip() {
@@ -540,7 +555,10 @@
       }
 
       try {
-        // Send the current trip to the backend's save endpoint
+        // Send the current trip to the backend's save endpoint.
+        // window.currentTrip now includes: destination, startDate,
+        // endDate, budget, style, days, summary, budgetTier, itinerary
+        // — exactly what POST /api/trips expects (see server.js).
         const response = await fetch(`${API_BASE}/api/trips`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -548,10 +566,189 @@
         });
 
         const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to save trip');
+        }
+
         alert(`✅ ${data.message}`);
 
+        // Refresh the Saved Trips list so the new trip appears
+        // immediately without needing a page reload.
+        loadSavedTrips();
+
       } catch (error) {
-        alert("❌ Could not save trip. Is the server running?");
+        alert(`❌ ${error.message || 'Could not save trip. Is the server running?'}`);
+      }
+    }
+
+    // -------------------------------------------------------
+    // PHASE 4: SAVED TRIPS — Load, Render, View, Delete
+    // -------------------------------------------------------
+
+    // We keep a local copy of the saved trips so that clicking
+    // "View" doesn't need a second network request — we already
+    // have the full itinerary data from loadSavedTrips().
+    let savedTripsCache = [];
+
+    // ---------------------------------------------------------
+    // loadSavedTrips()
+    //   Fetches all saved trips from GET /api/trips and renders
+    //   them as cards in the "Saved Trips" section.
+    //   Called: (1) on page load, (2) after saving a trip,
+    //           (3) after deleting a trip.
+    // ---------------------------------------------------------
+    async function loadSavedTrips() {
+      const listEl  = document.getElementById('saved-trips-list');
+      const emptyEl = document.getElementById('saved-empty');
+
+      try {
+        const response = await fetch(`${API_BASE}/api/trips`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to load saved trips');
+        }
+
+        // Save a copy for viewSavedTrip() to use later
+        savedTripsCache = data.trips;
+
+        if (data.trips.length === 0) {
+          // No trips yet — show the empty state, clear the list
+          emptyEl.style.display = 'block';
+          listEl.innerHTML = '';
+          return;
+        }
+
+        // We have trips — hide the empty state and render cards.
+        // .map() builds one HTML string per trip, .join('') glues
+        // them all together into one big string.
+        emptyEl.style.display = 'none';
+        listEl.innerHTML = data.trips.map(buildSavedTripCard).join('');
+
+      } catch (error) {
+        // If MySQL isn't set up yet, this will fail — that's okay.
+        // We log it quietly rather than showing a scary error on
+        // page load (the user hasn't done anything yet).
+        console.warn('Could not load saved trips:', error.message);
+        emptyEl.style.display = 'block';
+        emptyEl.querySelector('p').textContent =
+          '⚠️ Could not load saved trips. Is the server & MySQL running?';
+      }
+    }
+
+    // ---------------------------------------------------------
+    // buildSavedTripCard(trip)
+    //   Returns an HTML string for one saved trip card.
+    //   trip comes from our backend with shape:
+    //   { id, destination, startDate, endDate, budget, style,
+    //     days, summary, budgetTier, itinerary, createdAt }
+    // ---------------------------------------------------------
+    function buildSavedTripCard(trip) {
+      const budgetTierLabels = {
+        low: '🪙 Budget',
+        medium: '💼 Mid-Range',
+        high: '💎 Luxury'
+      };
+
+      const tierLabel = budgetTierLabels[trip.budgetTier] || trip.budgetTier || '';
+
+      return `
+        <div class="saved-trip-card">
+          <div class="saved-trip-info">
+            <h3>📍 ${trip.destination}</h3>
+            <p class="saved-trip-dates">${trip.startDate} → ${trip.endDate} · ${trip.days} day${trip.days > 1 ? 's' : ''}</p>
+            <p class="saved-trip-meta">${tierLabel} · $${trip.budget} budget</p>
+          </div>
+          <div class="saved-trip-actions">
+            <button class="btn btn-outline" onclick="viewSavedTrip(${trip.id})">👁️ View</button>
+            <button class="btn btn-outline btn-danger" onclick="deleteTrip(${trip.id})">🗑️ Delete</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ---------------------------------------------------------
+    // viewSavedTrip(id)
+    //   Finds the trip in our cached list and displays it in the
+    //   Results section — reusing the SAME renderItinerary()
+    //   function used for freshly-generated trips. This is a nice
+    //   example of code reuse: one render function, two data sources
+    //   (a brand-new AI/engine result, or a saved database record).
+    // ---------------------------------------------------------
+    function viewSavedTrip(id) {
+      // .find() searches the array and returns the first item
+      // where the condition is true (or undefined if none match).
+      const trip = savedTripsCache.find(function (t) {
+        return t.id === id;
+      });
+
+      if (!trip) {
+        alert('Trip not found. Try refreshing the page.');
+        return;
+      }
+
+      // Update the results header — same logic as generateItinerary()
+      document.getElementById("results-title").textContent =
+        `📍 ${trip.destination} Itinerary`;
+
+      const formattedStart = new Date(trip.startDate + "T00:00:00")
+        .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      const formattedEnd = new Date(trip.endDate + "T00:00:00")
+        .toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+      document.getElementById("results-meta").textContent =
+        `${formattedStart} → ${formattedEnd} · ${trip.days} days · $${trip.budget} budget`;
+
+      const budgetTierLabels = {
+        low: '🪙 Budget-Friendly',
+        medium: '💼 Mid-Range',
+        high: '💎 Luxury'
+      };
+      document.getElementById("results-summary").textContent =
+        `${trip.summary || ''} · ${budgetTierLabels[trip.budgetTier] || trip.budgetTier || ''}`;
+
+      // Render the day cards using the saved itinerary data
+      renderItinerary(trip.itinerary);
+
+      // Update window.currentTrip too — so if the user clicks
+      // "Save Trip" again, PDF export (Phase 5), or Map (Phase 6)
+      // on a saved trip, those features have the data they need.
+      window.currentTrip = trip;
+
+      // Show and scroll to the results section
+      const resultsSection = document.getElementById("results");
+      resultsSection.style.display = "block";
+      resultsSection.scrollIntoView({ behavior: "smooth" });
+    }
+
+    // ---------------------------------------------------------
+    // deleteTrip(id)
+    //   Asks for confirmation, then calls DELETE /api/trips/:id
+    //   and refreshes the saved trips list.
+    // ---------------------------------------------------------
+    async function deleteTrip(id) {
+      // confirm() shows a browser popup with OK/Cancel buttons.
+      // It returns true if the user clicked OK, false otherwise.
+      const confirmed = confirm('Delete this saved trip? This cannot be undone.');
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/trips/${id}`, {
+          method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to delete trip');
+        }
+
+        // Refresh the list so the deleted card disappears
+        loadSavedTrips();
+
+      } catch (error) {
+        alert(`❌ ${error.message || 'Could not delete trip.'}`);
       }
     }
 
@@ -564,7 +761,22 @@
       // Phase 6: Will show locations on a Leaflet map
       alert("🗺️ Map view coming in Phase 6!");
     }
+
+    // -------------------------------------------------------
+    // PAGE LOAD: Fetch saved trips as soon as the page opens
+    // -------------------------------------------------------
+    //
+    // "DOMContentLoaded" fires once the HTML has been fully
+    // parsed (but maybe before images finish loading — that's
+    // fine, we don't have any here).
+    //
+    // This means as soon as you visit http://localhost:3000,
+    // the Saved Trips section populates automatically from
+    // the database — no button click needed.
+    document.addEventListener('DOMContentLoaded', function () {
+      loadSavedTrips();
+    });
   </script>
- 
+
 </body>
 </html>
