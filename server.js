@@ -40,8 +40,6 @@ const itineraryEngine = require('./itineraryEngine');
 // db.js handles all connection configuration — here we just
 // import the ready-to-use pool and call .query() / .execute() on it.
 const pool = require('./db');
-console.log('POOL TYPE:', typeof pool);
-console.log('POOL KEYS:', Object.keys(pool));
 
 
 // --- 2. CREATE THE EXPRESS APP ---
@@ -105,7 +103,7 @@ app.get('/api/health', function (req, res) {
   // communicate — it's just a structured text format.
   res.json({
     status: 'ok',
-    message: 'TravelMate AI server is running!',
+    message: 'TravelMate server is running!',
     timestamp: new Date().toISOString()
   });
 });
@@ -398,7 +396,7 @@ app.use(function (req, res) {
 // The callback function runs once the server successfully starts.
 app.listen(PORT, async function () {
   console.log('');
-  console.log('🚀 TravelMate AI server is running!');
+  console.log('🚀 TravelMate server is running!');
   console.log(`📍 Local:   http://localhost:${PORT}`);
   console.log(`🔍 Health:  http://localhost:${PORT}/api/health`);
 
@@ -412,10 +410,11 @@ app.listen(PORT, async function () {
   // Doing this check at startup means you find out IMMEDIATELY
   // if something's wrong with your database setup, rather than
   // discovering it later when a user clicks "Save Trip".
- try {
-  await pool.query('SELECT 1');
-  console.log('🗄️  MySQL:    connected successfully ✅');
-}  catch (error) {
+  try {
+    const connection = await pool.getConnection();
+    console.log('🗄️  MySQL:    connected successfully ✅');
+    connection.release();
+  } catch (error) {
     console.log('🗄️  MySQL:    ❌ connection failed —', error.message);
     console.log('   Check your .env file (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)');
     console.log('   and make sure MySQL is running and schema.sql has been executed.');

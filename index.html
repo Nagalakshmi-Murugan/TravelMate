@@ -19,7 +19,7 @@
     Without this, mobile browsers zoom out and make everything tiny.
   -->
 
-  <title>TravelMate AI — Plan Your Perfect Trip</title>
+  <title>TravelMate — Plan Your Perfect Trip</title>
 
   <!-- Link to Google Fonts — we're using two fonts:
        'Playfair Display' for headings (elegant, travel-magazine feel)
@@ -33,6 +33,21 @@
 
   <!-- This links our CSS file to this HTML file -->
   <link rel="stylesheet" href="style.css" />
+
+  <!-- ============================================================
+       PHASE 5: jsPDF — PDF generation library
+       ============================================================
+       Loaded from a CDN (Content Delivery Network) — a server that
+       hosts popular libraries so we don't need to npm install or
+       bundle anything. This single line makes a global `jspdf`
+       object available to all our JavaScript below, containing
+       the jsPDF class we use to build PDF documents.
+
+       Placing it in <head> means it loads BEFORE our page's own
+       <script> runs at the bottom — so `jspdf` is guaranteed to
+       exist by the time exportPDF() is called.
+  ============================================================ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 
 <body>
@@ -51,7 +66,7 @@
       <!-- Brand logo area -->
       <div class="nav-brand">
         <span class="nav-icon">✈️</span>
-        <span class="nav-title">TravelMate <span class="nav-ai">AI</span></span>
+        <span class="nav-title">Travel<span class="nav-ai">Mate</span></span>
       </div>
 
       <!-- Navigation links -->
@@ -69,7 +84,7 @@
   -->
   <header class="hero">
     <div class="hero-inner">
-      <p class="hero-eyebrow">AI-Powered Travel Planning</p>
+      <p class="hero-eyebrow">Smart Travel Planning</p>
       <h1 class="hero-headline">Your Dream Trip,<br />Planned in Seconds</h1>
       <p class="hero-sub">
         Tell us where you want to go. Our AI builds a full day-by-day itinerary
@@ -273,7 +288,7 @@
 
   <!-- ==================== FOOTER ==================== -->
   <footer class="footer">
-    <p>TravelMate AI &copy; 2025 — Built with ✈️ and a lot of ☕</p>
+    <p>TravelMate &copy; 2026 — Built with ✈️ and a lot of ☕</p>
   </footer>
 
   <!-- ==================== JAVASCRIPT ==================== -->
@@ -752,9 +767,267 @@
       }
     }
 
+    // ============================================================
+    // PHASE 5: PDF EXPORT — exportPDF() and its helpers
+    // ============================================================
+    //
+    // HOW THIS WORKS, STEP BY STEP:
+    //   1. Validate that a trip actually exists (window.currentTrip)
+    //   2. Create a new jsPDF document
+    //   3. Draw the title, then the trip summary section
+    //   4. Loop through each day, drawing its activities
+    //      — checking for page overflow and adding new pages as needed
+    //   5. Call doc.save() to trigger the browser download
+    //
+    // jsPDF works in MILLIMETRES by default on an A4 page:
+    //   Page width:  210mm
+    //   Page height: 297mm
+    // We track a `y` variable — our "cursor" — and move it down
+    // after writing each line. There is no automatic layout flow
+    // like in HTML/CSS — we position everything manually.
+    // ============================================================
+
     function exportPDF() {
-      // Phase 5: Will use jsPDF to generate a downloadable PDF
-      alert("📄 PDF export coming in Phase 5!");
+      // --- STEP 1: Validation ---
+      // Don't let the user export a PDF with no data. This is the
+      // "Prevent export when no itinerary exists" requirement.
+      if (!window.currentTrip || !window.currentTrip.itinerary || window.currentTrip.itinerary.length === 0) {
+        alert("⚠️ Generate or view a trip first before exporting a PDF.");
+        return;
+      }
+
+      // Defensive check: make sure the jsPDF library actually loaded.
+      // If the CDN script failed (e.g. no internet connection), the
+      // global `jspdf` object won't exist. Fail gracefully instead
+      // of throwing a confusing "jspdf is not defined" error.
+      if (typeof jspdf === 'undefined') {
+        alert("⚠️ PDF library failed to load. Check your internet connection and try again.");
+        return;
+      }
+
+      const trip = window.currentTrip;
+
+      try {
+        // --- STEP 2: Create the PDF document ---
+        // jsPDF's UMD build exposes the class as `jspdf.jsPDF`.
+        // 'p' = portrait orientation, 'mm' = millimetre units,
+        // 'a4' = standard A4 page size (210mm × 297mm).
+        const { jsPDF } = jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+
+        // Page layout constants — defined once so they're easy to
+        // tweak later without hunting through the whole function.
+        const PAGE_WIDTH    = 210;
+        const PAGE_HEIGHT   = 297;
+        const MARGIN_LEFT   = 15;
+        const MARGIN_RIGHT  = 15;
+        const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
+        const BOTTOM_LIMIT  = 280;  // Start a new page once y passes this
+
+        // Our "cursor" — the current vertical position on the page.
+        // We update this after writing each line of text.
+        let y = 20;
+
+        // ------------------------------------------------------
+        // HELPER: checkPageBreak(spaceNeeded)
+        //   Before writing a line, check if it would run off the
+        //   bottom of the page. If so, start a fresh page and
+        //   reset the cursor to the top.
+        // ------------------------------------------------------
+        function checkPageBreak(spaceNeeded) {
+          if (y + spaceNeeded > BOTTOM_LIMIT) {
+            doc.addPage();
+            y = 20; // Reset cursor to the top margin of the new page
+          }
+        }
+
+        // ------------------------------------------------------
+        // HELPER: writeWrappedText(text, x, fontSize, lineHeight)
+        //   Long activity descriptions might be too wide for one
+        //   line. doc.splitTextToSize() breaks text into an array
+        //   of lines that fit within CONTENT_WIDTH, and we print
+        //   each line, advancing y as we go.
+        // ------------------------------------------------------
+        function writeWrappedText(text, x, fontSize, lineHeight) {
+          doc.setFontSize(fontSize);
+          const maxWidth = PAGE_WIDTH - x - MARGIN_RIGHT;
+          const lines = doc.splitTextToSize(text, maxWidth);
+
+          lines.forEach(function (line) {
+            checkPageBreak(lineHeight);
+            doc.text(line, x, y);
+            y += lineHeight;
+          });
+        }
+
+        // --- STEP 3: Title — "TravelMate" branding ---
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(26);
+        doc.setTextColor(232, 130, 26); // Matches our --accent amber colour
+        doc.text('TravelMate', MARGIN_LEFT, y);
+        y += 8;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 100, 100);
+        doc.text('Your Personalised Travel Itinerary', MARGIN_LEFT, y);
+        y += 4;
+
+        // A thin horizontal line under the header — doc.line(x1, y1, x2, y2)
+        doc.setDrawColor(220, 220, 220);
+        doc.line(MARGIN_LEFT, y, PAGE_WIDTH - MARGIN_RIGHT, y);
+        y += 10;
+
+        // --- TRIP SUMMARY SECTION ---
+        doc.setTextColor(26, 26, 46); // Matches our --ink dark navy colour
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text(`📍 ${trip.destination}`, MARGIN_LEFT, y);
+        y += 9;
+
+        // A small reusable helper for "Label: Value" rows in the summary
+        function summaryRow(label, value) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor(80, 80, 80);
+          doc.text(label, MARGIN_LEFT, y);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(40, 40, 40);
+          doc.text(String(value), MARGIN_LEFT + 32, y);
+
+          y += 6.5;
+        }
+
+        const budgetTierLabels = { low: 'Budget-Friendly', medium: 'Mid-Range', high: 'Luxury' };
+
+        summaryRow('Dates:', `${trip.startDate}  to  ${trip.endDate}  (${trip.days} day${trip.days > 1 ? 's' : ''})`);
+        summaryRow('Budget:', `$${trip.budget}  (${budgetTierLabels[trip.budgetTier] || trip.budgetTier || ''})`);
+        summaryRow('Style:', trip.style.charAt(0).toUpperCase() + trip.style.slice(1));
+
+        if (trip.summary) {
+          y += 1;
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(10);
+          doc.setTextColor(120, 120, 120);
+          writeWrappedText(trip.summary, MARGIN_LEFT, 10, 5);
+        }
+
+        y += 4;
+        doc.setDrawColor(220, 220, 220);
+        doc.line(MARGIN_LEFT, y, PAGE_WIDTH - MARGIN_RIGHT, y);
+        y += 10;
+
+        // --- STEP 4: Day-by-day itinerary ---
+        trip.itinerary.forEach(function (day) {
+
+          // Each day heading needs ~14mm of space — check before writing
+          checkPageBreak(14);
+
+          // Day badge background — a small coloured rectangle behind
+          // the "Day X" text, similar to the badge style in our UI.
+          // doc.roundedRect(x, y, width, height, rx, ry, style)
+          doc.setFillColor(232, 130, 26);
+          doc.roundedRect(MARGIN_LEFT, y - 5, 22, 7, 1.5, 1.5, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.text(`Day ${day.day}`, MARGIN_LEFT + 3, y);
+
+          // Day title next to the badge
+          doc.setTextColor(26, 26, 46);
+          doc.setFontSize(13);
+          doc.text(day.title, MARGIN_LEFT + 26, y);
+          y += 5;
+
+          // Date line, smaller and grey
+          if (day.date) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9.5);
+            doc.setTextColor(140, 140, 140);
+            doc.text(day.date, MARGIN_LEFT + 26, y);
+          }
+          y += 7;
+
+          // Loop through each activity in this day
+          day.activities.forEach(function (act) {
+            // Each activity needs roughly 18-24mm — check before writing
+            checkPageBreak(20);
+
+            // Time — bold, amber accent colour
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10.5);
+            doc.setTextColor(232, 130, 26);
+            doc.text(act.time, MARGIN_LEFT + 3, y);
+
+            // Activity name — bold, dark
+            doc.setTextColor(26, 26, 46);
+            doc.text(act.activity, MARGIN_LEFT + 28, y);
+            y += 5;
+
+            // Location line
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9.5);
+            doc.setTextColor(90, 90, 90);
+            doc.text(`Location: ${act.location}`, MARGIN_LEFT + 28, y);
+            y += 4.5;
+
+            // Cost line (only if present — rule-based engine includes it)
+            if (act.cost) {
+              doc.setTextColor(14, 165, 233); // Matches our --sky colour
+              doc.text(`Estimated cost: ${act.cost}`, MARGIN_LEFT + 28, y);
+              y += 4.5;
+            }
+
+            // Tip line (italic, wrapped if long)
+            if (act.tip) {
+              doc.setFont('helvetica', 'italic');
+              doc.setTextColor(130, 130, 130);
+              writeWrappedText(`Tip: ${act.tip}`, MARGIN_LEFT + 28, 9.5, 4.5);
+            }
+
+            y += 3; // Small gap between activities
+          });
+
+          y += 5; // Gap between days
+        });
+
+        // --- STEP 5: Footer on every page ---
+        // doc.getNumberOfPages() tells us how many pages exist.
+        // We loop through each one and stamp a footer at the bottom.
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          doc.setPage(i);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          doc.setTextColor(160, 160, 160);
+          doc.text(
+            `Generated by TravelMate · Page ${i} of ${totalPages}`,
+            MARGIN_LEFT,
+            PAGE_HEIGHT - 10
+          );
+        }
+
+        // --- STEP 6: Trigger the download ---
+        // doc.save(filename) builds the final PDF blob and tells the
+        // browser to download it — exactly like clicking a download
+        // link. No server request involved anywhere in this process.
+        //
+        // We build a clean filename: spaces removed, lowercase.
+        // Example: "Tokyo" + 3 days  →  "travelmate-tokyo-itinerary.pdf"
+        const safeDestination = trip.destination
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')   // Replace anything not a-z/0-9 with a dash
+          .replace(/(^-|-$)/g, '');       // Trim leading/trailing dashes
+
+        doc.save(`travelmate-${safeDestination}-itinerary.pdf`);
+
+      } catch (error) {
+        // Catch any unexpected jsPDF errors (e.g. malformed data)
+        // so the page doesn't silently fail with no feedback.
+        console.error('PDF export failed:', error);
+        alert("❌ Something went wrong while creating the PDF. Please try again.");
+      }
     }
 
     function viewMap() {
