@@ -36,6 +36,13 @@ const path = require('path');
 // No API keys, no network calls — pure JavaScript logic.
 const itineraryEngine = require('./itineraryEngine');
 
+// Phase 6: Groq AI service.
+// This module tries to generate an itinerary using Groq's LLM API.
+// If anything goes wrong, it returns { success: false } so we can
+// fall back to itineraryEngine without the user knowing. Keeping AI
+// logic here (rather than inline below) means the route stays clean.
+const groqService = require('./groqService');
+
 // Our MySQL connection pool (Phase 4).
 // db.js handles all connection configuration — here we just
 // import the ready-to-use pool and call .query() / .execute() on it.
@@ -109,23 +116,38 @@ app.get('/api/health', function (req, res) {
 });
 
 
-// --- ROUTE 2: Generate Itinerary with Rule-Based Engine ---
+// --- ROUTE 2: Generate Itinerary — AI with Rule-Based Fallback ---
 // POST /api/generate
 //
-// PHASE 3 (REVISED): No external AI, no API keys, no network
-// calls. itineraryEngine.generate() is a plain, synchronous
-// JavaScript function — it runs instantly, so this route
-// doesn't even need to be "async" or use "await".
+// PHASE 6: This route now implements a two-tier strategy:
 //
-// This is a great interview talking point: "the itinerary
-// generation is a pure function — given the same inputs (and
-// ignoring the random shuffle), it's fast, predictable, and
-// has zero external dependencies or costs."
-app.post('/api/generate', function (req, res) {
+//   TIER 1 — Groq AI (groqService.js)
+//     Sends the trip details to Groq's LLM API. Returns a rich,
+//     realistic, non-repetitive itinerary with real place names.
+//     Takes 1–4 seconds (Groq LPU hardware is fast).
+//
+//   TIER 2 — Rule-Based Engine (itineraryEngine.js) [FALLBACK]
+//     If Groq fails for ANY reason (invalid key, rate limit,
+//     timeout, malformed JSON, validation error), we immediately
+//     call the rule-based engine instead. From the user's perspective,
+//     they still get an itinerary — just the pre-AI version.
+//
+// WHY ASYNC?
+//   groqService.generate() makes an HTTPS call to Groq's servers.
+//   Network I/O takes time, so we must await it. The rule-based
+//   engine is synchronous but we wrap it in the same async function
+//   for consistency.
+//
+// KEY INSIGHT — "success" flag instead of throw:
+//   groqService.generate() NEVER throws. On any error it returns
+//   { success: false, error: '...' }. This means our route logic
+//   is just an if/else — no nested try/catch needed. Clean code.
+
+app.post('/api/generate', async function (req, res) {
 
   const { destination, startDate, endDate, budget, style } = req.body;
 
-  // --- Input Validation (unchanged from Phase 2) ---
+  // --- Input Validation (unchanged from all previous phases) ---
   if (!destination || !startDate || !endDate || !budget || !style) {
     return res.status(400).json({
       error: 'Missing required fields: destination, startDate, endDate, budget, style'
@@ -140,38 +162,68 @@ app.post('/api/generate', function (req, res) {
     return res.status(400).json({ error: 'End date must be after start date' });
   }
 
-  // --- Call the Rule-Based Engine ---
-  // We still wrap this in try/catch as good practice — if any
-  // unexpected error occurs (e.g. a bad date), we don't want
-  // the server to crash. But unlike Gemini, this code has no
-  // network calls, so errors here would only be bugs in our
-  // own logic — good to catch during development.
-  try {
-    // generate() is synchronous — no "await" needed.
-    // It returns { summary, budgetTier, itinerary }
-    const result = itineraryEngine.generate({
-      destination,
-      startDate,
-      endDate,
-      budget,
-      style,
-      days,
-    });
+  // Build the tripDetails object once — passed to whichever
+  // engine runs (both accept the same shape).
+  const tripDetails = { destination, startDate, endDate, budget, style, days };
 
-    // Success — send the generated itinerary back to the frontend.
-    // We spread the trip details AND include the engine's extra
-    // info (summary, budgetTier) so the frontend can display them.
-    res.json({
-      success: true,
-      trip: { destination, startDate, endDate, budget, style, days },
-      summary: result.summary,
-      budgetTier: result.budgetTier,
-      itinerary: result.itinerary,
+  try {
+
+    // ── TIER 1: TRY GROQ AI ───────────────────────────────────
+    //
+    // groqService.generate() returns either:
+    //   { success: true,  summary, budgetTier, itinerary }   → use it
+    //   { success: false, error: '...' }                     → fallback
+    //
+    // We always await the result — even if Groq is down, it will
+    // return { success: false } rather than throw.
+    const aiResult = await groqService.generate(tripDetails);
+
+    if (aiResult.success) {
+      // ── AI SUCCESS PATH ───────────────────────────────────
+      console.log(`✨ Serving AI itinerary for ${destination}`);
+
+      // We include generatedBy in the response for the frontend
+      // to optionally show a "Powered by AI" badge. The frontend
+      // renders identically regardless — this is just metadata.
+      return res.json({
+        success:     true,
+        generatedBy: 'ai',         // ← new field in Phase 6
+        trip:        { destination, startDate, endDate, budget, style, days },
+        summary:     aiResult.summary,
+        budgetTier:  aiResult.budgetTier,
+        itinerary:   aiResult.itinerary,
+      });
+    }
+
+    // ── AI FAILED — LOG AND FALL THROUGH TO TIER 2 ───────────
+    //
+    // We log the reason so developers can investigate, but we
+    // don't expose the internal AI error to the user. They get
+    // a working itinerary either way.
+    console.warn(`⚠️  Groq AI failed (${aiResult.error}) — using rule-based fallback`);
+
+    // ── TIER 2: RULE-BASED FALLBACK ───────────────────────────
+    //
+    // itineraryEngine.generate() is synchronous — no await needed.
+    // It's our safety net: zero external dependencies, always works.
+    const fallbackResult = itineraryEngine.generate(tripDetails);
+
+    console.log(`🔄 Serving fallback itinerary for ${destination}`);
+
+    return res.json({
+      success:     true,
+      generatedBy: 'fallback',   // ← signals rule-based engine was used
+      trip:        { destination, startDate, endDate, budget, style, days },
+      summary:     fallbackResult.summary,
+      budgetTier:  fallbackResult.budgetTier,
+      itinerary:   fallbackResult.itinerary,
     });
 
   } catch (error) {
-    // Log the full error in the terminal for debugging
-    console.error('\n❌ /api/generate error:', error.message);
+    // This outer catch only fires if itineraryEngine itself throws —
+    // which would indicate a bug in our own code. Groq errors are
+    // caught internally and never reach here.
+    console.error('\n❌ /api/generate unexpected error:', error.message);
 
     res.status(500).json({
       error: error.message || 'Failed to generate itinerary. Please try again.'
