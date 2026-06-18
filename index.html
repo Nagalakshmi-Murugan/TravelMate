@@ -221,7 +221,13 @@
       <div class="loading-spinner"></div>
       <div>
         <p class="loading-title">✈️ Building your itinerary…</p>
-        <p class="loading-sub">Picking activities that match your budget and travel style.</p>
+        <!--
+          Phase 6: Updated copy reflects that we now call an AI.
+          The text is intentionally vague — if Groq fails and the
+          rule-based engine runs, the sub-text is still accurate
+          ("curating" can mean either engine). No broken promises.
+        -->
+        <p class="loading-sub">Our AI is curating activities tailored to your destination, budget, and travel style.</p>
       </div>
     </div>
   </div>
@@ -425,10 +431,29 @@
           medium: '💼 Mid-Range',
           high: '💎 Luxury'
         };
-        document.getElementById("results-summary").textContent =
-          `${data.summary} · ${budgetTierLabels[data.budgetTier] || data.budgetTier}`;
 
-        // Render the day cards (same function as Phase 1)
+        // ── PHASE 6: AI / FALLBACK BADGE ────────────────────────────
+        //
+        // data.generatedBy is a new field added in Phase 6.
+        // It tells us whether the itinerary came from Groq AI or the
+        // rule-based fallback engine. We surface this honestly in the UI.
+        //
+        // WHY SHOW THIS?
+        //   Transparency — users deserve to know if they received an AI
+        //   itinerary or a template-based one. It also helps during
+        //   development: you can immediately see in the UI which engine ran.
+        //
+        // The badge is appended to the summary line. The results-summary
+        // paragraph already exists in the HTML — we just update its text.
+        const engineBadge = data.generatedBy === 'ai'
+          ? ' · 🤖 AI-powered'
+          : ' · ⚙️ Smart suggestions';
+
+        document.getElementById("results-summary").textContent =
+          `${data.summary} · ${budgetTierLabels[data.budgetTier] || data.budgetTier}${engineBadge}`;
+
+        // Render the day cards (same function as all previous phases —
+        // the itinerary data shape is identical whether AI or fallback)
         renderItinerary(data.itinerary);
 
         // Show and scroll to results
@@ -436,18 +461,15 @@
         resultsSection.style.display = "block";
         resultsSection.scrollIntoView({ behavior: "smooth" });
 
-        // Store current trip data so Save/PDF/Map can use it
-        // window.currentTrip stores it globally in the browser tab.
-        //
-        // PHASE 4: We now include summary + budgetTier too, because
-        // POST /api/trips saves these into their own database columns
-        // (so the Saved Trips list can display them without
-        // re-calculating anything).
+        // Store current trip data so Save/PDF/Map can use it.
+        // Phase 6 adds generatedBy to currentTrip so we can
+        // optionally include it in future features (e.g. PDF header).
         window.currentTrip = {
           ...data.trip,
-          summary: data.summary,
-          budgetTier: data.budgetTier,
-          itinerary: data.itinerary
+          summary:     data.summary,
+          budgetTier:  data.budgetTier,
+          itinerary:   data.itinerary,
+          generatedBy: data.generatedBy,   // ← new in Phase 6
         };
 
       } catch (error) {
@@ -476,12 +498,18 @@
     // RENDER: Builds the day cards HTML and inserts into page
     // -------------------------------------------------------
     //
-    // PHASE 3 UPDATE:
-    //   Our rule-based engine now returns extra fields per
-    //   activity (cost, tip) and per day (date). We display
-    //   those here. The structure mirrors the data shape
-    //   returned by itineraryEngine.js — keeping frontend and
-    //   backend "in sync" on data shape is an important skill.
+    // PHASE 6 UPDATE:
+    //   The AI engine may occasionally produce activities without
+    //   a "cost" or "tip" field (the validator fills in safe
+    //   defaults, but we also guard here). We use the || operator
+    //   to substitute a fallback string if either field is falsy.
+    //   This means the card always renders cleanly regardless of
+    //   which engine produced the itinerary.
+    //
+    //   The data shape (day.day, day.title, day.date, act.time,
+    //   act.activity, act.location, act.cost, act.tip) is IDENTICAL
+    //   between the AI engine and the rule-based engine — by design.
+    //   The frontend never needs to know which engine ran.
     function renderItinerary(itinerary) {
       const output = document.getElementById("itinerary-output");
       output.innerHTML = "";
@@ -489,14 +517,19 @@
       itinerary.forEach(function (day) {
         const activitiesHTML = day.activities
           .map(function (act) {
+            // Guard: cost and tip may be absent on AI-generated activities
+            // that slipped past the validator. Show a neutral fallback.
+            const cost = act.cost || 'Cost varies';
+            const tip  = act.tip  || 'Check local tourism sites for details.';
+
             return `
               <div class="activity-item">
                 <span class="activity-time">${act.time}</span>
                 <div class="activity-details">
                   <p class="activity-name">${act.activity}</p>
                   <p class="activity-location">📍 ${act.location}</p>
-                  <p class="activity-cost">💵 ${act.cost}</p>
-                  <p class="activity-tip">💡 ${act.tip}</p>
+                  <p class="activity-cost">💵 ${cost}</p>
+                  <p class="activity-tip">💡 ${tip}</p>
                 </div>
               </div>
             `;
@@ -807,6 +840,30 @@
 
       const trip = window.currentTrip;
 
+      // ── PHASE 6 FIX: Emoji stripper for PDF output ───────────────
+      //
+      // jsPDF's built-in helvetica font only covers Latin characters.
+      // Any emoji (🤖, ⚙️, 📍, etc.) gets rendered as garbage like
+      // "Ø=ÜÍ" because those Unicode code points don't exist in the
+      // font's character map.
+      //
+      // The fix: strip all emoji from strings BEFORE passing them
+      // to any doc.text() or writeWrappedText() call.
+      //
+      // The regex covers:
+      //   \u{1F300}-\u{1FAFF}  — most modern emoji (faces, objects, flags)
+      //   \u{2600}-\u{27BF}    — miscellaneous symbols (☀️ ✈️ ⚙️ etc.)
+      // The "u" flag enables Unicode mode so \u{...} ranges work.
+      //
+      // We call .replace(/\s+/g, ' ').trim() after stripping to
+      // collapse any double-spaces left where an emoji used to be.
+      function stripEmoji(str) {
+        return (str || '')
+          .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
       try {
         // --- STEP 2: Create the PDF document ---
         // jsPDF's UMD build exposes the class as `jspdf.jsPDF`.
@@ -882,7 +939,7 @@
         doc.setTextColor(26, 26, 46); // Matches our --ink dark navy colour
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(16);
-        doc.text(`📍 ${trip.destination}`, MARGIN_LEFT, y);
+        doc.text(stripEmoji(`📍 ${trip.destination}`), MARGIN_LEFT, y);
         y += 9;
 
         // A small reusable helper for "Label: Value" rows in the summary
@@ -910,7 +967,7 @@
           doc.setFont('helvetica', 'italic');
           doc.setFontSize(10);
           doc.setTextColor(120, 120, 120);
-          writeWrappedText(trip.summary, MARGIN_LEFT, 10, 5);
+          writeWrappedText(stripEmoji(trip.summary), MARGIN_LEFT, 10, 5);
         }
 
         y += 4;
@@ -937,7 +994,7 @@
           // Day title next to the badge
           doc.setTextColor(26, 26, 46);
           doc.setFontSize(13);
-          doc.text(day.title, MARGIN_LEFT + 26, y);
+          doc.text(stripEmoji(day.title), MARGIN_LEFT + 26, y);
           y += 5;
 
           // Date line, smaller and grey
@@ -945,7 +1002,7 @@
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9.5);
             doc.setTextColor(140, 140, 140);
-            doc.text(day.date, MARGIN_LEFT + 26, y);
+            doc.text(stripEmoji(day.date), MARGIN_LEFT + 26, y);
           }
           y += 7;
 
@@ -958,24 +1015,24 @@
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(10.5);
             doc.setTextColor(232, 130, 26);
-            doc.text(act.time, MARGIN_LEFT + 3, y);
+            doc.text(stripEmoji(act.time), MARGIN_LEFT + 3, y);
 
             // Activity name — bold, dark
             doc.setTextColor(26, 26, 46);
-            doc.text(act.activity, MARGIN_LEFT + 28, y);
+            doc.text(stripEmoji(act.activity), MARGIN_LEFT + 28, y);
             y += 5;
 
             // Location line
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9.5);
             doc.setTextColor(90, 90, 90);
-            doc.text(`Location: ${act.location}`, MARGIN_LEFT + 28, y);
+            doc.text(stripEmoji(`Location: ${act.location}`), MARGIN_LEFT + 28, y);
             y += 4.5;
 
             // Cost line (only if present — rule-based engine includes it)
             if (act.cost) {
               doc.setTextColor(14, 165, 233); // Matches our --sky colour
-              doc.text(`Estimated cost: ${act.cost}`, MARGIN_LEFT + 28, y);
+              doc.text(stripEmoji(`Estimated cost: ${act.cost}`), MARGIN_LEFT + 28, y);
               y += 4.5;
             }
 
@@ -983,7 +1040,7 @@
             if (act.tip) {
               doc.setFont('helvetica', 'italic');
               doc.setTextColor(130, 130, 130);
-              writeWrappedText(`Tip: ${act.tip}`, MARGIN_LEFT + 28, 9.5, 4.5);
+              writeWrappedText(stripEmoji(`Tip: ${act.tip}`), MARGIN_LEFT + 28, 9.5, 4.5);
             }
 
             y += 3; // Small gap between activities
