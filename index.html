@@ -48,6 +48,21 @@
        exist by the time exportPDF() is called.
   ============================================================ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- ============================================================
+       PHASE 7: Leaflet CSS — MUST load before leaflet.js
+       ============================================================
+       Leaflet's stylesheet controls the appearance of the map
+       container, zoom buttons, marker pins, and popups.
+       Loading it here in <head> ensures elements are styled
+       before JavaScript tries to render them.
+       crossorigin="anonymous" is standard practice for CDN assets.
+  ============================================================ -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin="anonymous"
+  />
 </head>
 
 <body>
@@ -72,6 +87,7 @@
       <!-- Navigation links -->
       <ul class="nav-links">
         <li><a href="#planner">Plan Trip</a></li>
+        <li><a href="#map-section">Map</a></li>
         <li><a href="#saved">Saved Trips</a></li>
       </ul>
     </div>
@@ -263,6 +279,67 @@
     </div>
   </section>
 
+  <!-- ==================== MAP SECTION ====================
+    PHASE 7: Leaflet interactive map.
+
+    This section is hidden (display:none via CSS) until the user
+    generates an itinerary or views a saved trip. JavaScript then
+    calls showMap(tripData) which:
+      1. Makes this section visible
+      2. Geocodes the destination via Nominatim (free, no API key)
+      3. Initialises (or re-uses) a Leaflet map instance
+      4. Places a marker with a popup showing trip details
+
+    TWO child elements alternate visibility:
+      #map-status  — shown while loading or on error
+      #map         — shown when the map is ready
+
+    id="map-section" lets JavaScript find and toggle this section.
+    The "container" div centres and constrains the width to match
+    the rest of the page (matches .container max-width: 800px).
+  -->
+  <section id="map-section">
+    <div class="container">
+
+      <div class="map-header">
+        <h2 class="map-title">🗺️ Destination Map</h2>
+        <p class="map-subtitle" id="map-subtitle">Showing your trip destination</p>
+      </div>
+
+      <!--
+        #map-status: a placeholder shown while geocoding is in
+        progress, or when geocoding fails. JavaScript toggles
+        between this and #map using style.display.
+
+        It starts visible (no inline style) because #map-section
+        itself is hidden — so the user never sees this flash.
+        When showMap() is called it becomes the loading indicator.
+      -->
+      <div id="map-status">
+        <div class="map-status-icon">🌍</div>
+        <p id="map-status-text">Finding your destination on the map…</p>
+      </div>
+
+      <!--
+        #map: the actual Leaflet map container.
+        IMPORTANT: This div must have an explicit CSS height (set
+        in style.css) — Leaflet cannot render into a 0-height div.
+        It starts hidden; showMap() swaps it with #map-status once
+        the tile layer has loaded and the marker is placed.
+      -->
+      <div id="map" style="display:none;"></div>
+
+      <!--
+        #map-legend: A row of coloured day pills rendered below the map.
+        Filled by renderMapLegend() once markers are placed.
+        Empty (and invisible) until then.
+      -->
+      <div id="map-legend"></div>
+
+    </div>
+  </section>
+
+
   <!-- ==================== SAVED TRIPS SECTION ==================== -->
   <!--
     PHASE 4: Now connected to MySQL via GET /api/trips.
@@ -296,6 +373,30 @@
   <footer class="footer">
     <p>TravelMate &copy; 2026 — Built with ✈️ and a lot of ☕</p>
   </footer>
+
+  <!-- ============================================================
+       PHASE 7: Leaflet JS — loaded just before our own script
+       ============================================================
+       The Leaflet JS library must load BEFORE our code that calls
+       L.map(), L.tileLayer(), L.marker() etc. Placing it here —
+       just above our own <script> block — guarantees that order.
+
+       Why not in <head>?
+         Scripts in <head> block HTML parsing. At the bottom of
+         <body>, the HTML is already rendered before JS runs —
+         faster perceived load time.
+
+       integrity / crossorigin:
+         These two attributes implement Subresource Integrity (SRI).
+         The browser hashes the downloaded file and compares it to
+         the `integrity` value. If they don't match (i.e. the CDN
+         was compromised), the script is refused. This is a security
+         best practice for any script loaded from a third-party CDN.
+  ============================================================ -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    crossorigin="anonymous"
+  ></script>
 
   <!-- ==================== JAVASCRIPT ==================== -->
   <!--
@@ -471,6 +572,12 @@
           itinerary:   data.itinerary,
           generatedBy: data.generatedBy,   // ← new in Phase 6
         };
+
+        // Phase 7: Show the map for the newly generated trip.
+        // showMap() is async (it geocodes the destination) but we
+        // don't await it here — we let it run in the background
+        // so it doesn't block the results section from appearing.
+        showMap(window.currentTrip);
 
       } catch (error) {
         // "catch" runs if anything in the "try" block failed:
@@ -760,9 +867,15 @@
       renderItinerary(trip.itinerary);
 
       // Update window.currentTrip too — so if the user clicks
-      // "Save Trip" again, PDF export (Phase 5), or Map (Phase 6)
+      // "Save Trip" again, PDF export (Phase 5), or Map (Phase 7)
       // on a saved trip, those features have the data they need.
       window.currentTrip = trip;
+
+      // Phase 7: Auto-show the map for this saved trip.
+      // We call showMap() after the results section is visible
+      // so the scroll order feels natural:
+      //   results section → (user scrolls down) → map section
+      showMap(trip);
 
       // Show and scroll to the results section
       const resultsSection = document.getElementById("results");
@@ -1087,9 +1200,799 @@
       }
     }
 
+    // ============================================================
+    // PHASE 8: ENHANCED MAP — Multi-Marker Itinerary Visualisation
+    // ============================================================
+    //
+    // WHAT CHANGED FROM PHASE 7:
+    //   Phase 7: One marker → the destination city.
+    //   Phase 8: Many markers → every attraction in the itinerary.
+    //
+    // FOUR CONCERNS, FOUR SECTIONS:
+    //
+    //   1. ITINERARY PARSER
+    //      Extracts place names from the itinerary data.
+    //      Input:  the itinerary array (from AI or rule-based engine)
+    //      Output: [ { day: 1, place: "Senso-ji Temple" }, ... ]
+    //
+    //   2. GEOCODING SERVICE
+    //      Converts place names → lat/lon using Nominatim.
+    //      Phase 8 upgrade: adds accept-language=en so Nominatim
+    //      returns English names instead of local-script names
+    //      (e.g. "Tokyo" instead of "東京").
+    //      Also rate-limits requests to 1/second (Nominatim policy).
+    //
+    //   3. MARKER MANAGER
+    //      Creates and removes Leaflet markers.
+    //      Each day gets its own colour so markers are visually
+    //      grouped by day. Uses Leaflet's DivIcon (HTML-based icon)
+    //      instead of the default blue pin.
+    //
+    //   4. MAP CONTROLLER
+    //      Initialises/reuses the Leaflet map instance.
+    //      Calls fitBounds() to auto-zoom to include all markers.
+    //      Unchanged from Phase 7: the "container already initialized"
+    //      guard, invalidateSize(), and the OSM tile layer.
+    //
+    // DATA FLOW (Phase 8):
+    //   showMap(trip)
+    //     → extractItineraryPlaces(trip.itinerary)  [parser]
+    //     → geocodePlacesSequentially(places)        [geocoder]
+    //         → geocodeSinglePlace(place, destination) × N
+    //     → renderAllMarkers(results, trip)          [marker manager]
+    //     → map.fitBounds(allCoords)                 [map controller]
+    //
+    // ============================================================
+
+
+    // ── SECTION 1: STATE ─────────────────────────────────────────
+    //
+    // We expand the state from Phase 7:
+    //   leafletMap      — the one Leaflet map instance (or null)
+    //   leafletMarker   — kept for backwards compatibility (single marker)
+    //   leafletMarkers  — array of ALL current markers (Phase 8)
+    //
+    // We use an array so we can remove ALL old markers when a new
+    // trip loads, then add the new set. Without this, old markers
+    // from a previous trip would linger on the map.
+
+    window.leafletMap     = null;
+    window.leafletMarker  = null;   // Phase 7 compat — unused in Phase 8
+    window.leafletMarkers = [];     // Phase 8: all current markers
+
+
+    // ── SECTION 2: ITINERARY PARSER ──────────────────────────────
+    //
+    // extractItineraryPlaces(itinerary) → Array<{ day, place }>
+    //
+    // WHAT IS ITINERARY PARSING?
+    //   Our itinerary is an array of day objects. Each day has an
+    //   array of activities. Each activity has a "location" field
+    //   that contains a venue name and neighbourhood, e.g.:
+    //     "Senso-ji Temple, Asakusa"
+    //     "Shibuya Crossing, Shibuya"
+    //
+    //   We "parse" this structure to produce a flat list of
+    //   { day, place } objects — one per unique location.
+    //
+    // DEDUPLICATION:
+    //   The AI sometimes repeats the same location across days.
+    //   We track a Set of seen place strings and skip duplicates.
+    //   A Set is like an array but each value can only appear once
+    //   and .has() / .add() are O(1) — fast regardless of size.
+    //
+    // PLACE NAME CLEANING:
+    //   The AI returns locations like "Senso-ji Temple, Asakusa".
+    //   We split on " — " and "," and take the first part, which
+    //   is the specific venue name. This gives Nominatim a more
+    //   precise search query than the full string.
+    //
+    //   Example:
+    //     "Louvre Museum, 1st arrondissement" → "Louvre Museum"
+    //     "Shibuya Crossing, Shibuya"         → "Shibuya Crossing"
+
+    function extractItineraryPlaces(itinerary) {
+      if (!Array.isArray(itinerary) || itinerary.length === 0) {
+        return [];
+      }
+
+      const places = [];
+      const seen   = new Set();  // tracks place names we've already added
+
+      itinerary.forEach(function (day) {
+        if (!Array.isArray(day.activities)) return;
+
+        day.activities.forEach(function (act) {
+          // act.location is the raw string from the engine.
+          // Guard against missing/empty values.
+          if (!act.location || typeof act.location !== 'string') return;
+
+          // Clean the place name:
+          //   Split on " — " (AI sometimes writes "Venue — District")
+          //   then split on "," (AI sometimes writes "Venue, District")
+          //   and take the first token, trimmed of whitespace.
+          const rawPlace = act.location
+            .split(' — ')[0]
+            .split(',')[0]
+            .trim();
+
+          // Skip if empty after cleaning, or if we've seen this name
+          if (!rawPlace || seen.has(rawPlace.toLowerCase())) return;
+
+          seen.add(rawPlace.toLowerCase());
+
+          places.push({
+            day:   day.day,       // which day number (1, 2, 3…)
+            place: rawPlace,      // cleaned venue name
+          });
+        });
+      });
+
+      return places;
+    }
+
+
+    // ── SECTION 3: GEOCODING SERVICE ─────────────────────────────
+    //
+    // We have TWO geocoding functions now:
+    //
+    //   geocodeSinglePlace(place, destination)
+    //     → geocodes ONE place, returns { lat, lon } or null
+    //
+    //   geocodePlacesSequentially(places, destination)
+    //     → geocodes ALL places, one at a time, with a 1-second
+    //       delay between requests (Nominatim rate limit policy)
+    //
+    // WHY SEQUENTIAL (not parallel)?
+    //   Nominatim's usage policy limits requests to 1 per second.
+    //   If we used Promise.all() to fire all requests at once,
+    //   we'd violate that limit and risk being temporarily blocked.
+    //   Sequential execution with a 1-second delay respects the policy.
+    //
+    // ENGLISH LOCALISATION (Feature F):
+    //
+    //   PROBLEM:
+    //     Nominatim returns place names in the local language by
+    //     default. Search "Seoul" → result display_name might be
+    //     "서울" or "도쿄" for Tokyo. The map tiles show English
+    //     street names but the popup and search context show local script.
+    //
+    //   SOLUTION:
+    //     Add two parameters to every Nominatim request:
+    //       &accept-language=en
+    //         Tells Nominatim to prefer English-language names in
+    //         the response's display_name field.
+    //       &namedetails=1
+    //         Returns extra name variants (name:en, name:ja, etc.)
+    //         in a "namedetails" object. We can then pick name:en
+    //         as a fallback if the main name is still non-Latin.
+    //
+    //   CONTEXT SEARCH:
+    //     We append the destination city to each place query:
+    //     "Senso-ji Temple" → "Senso-ji Temple Tokyo Japan"
+    //     This dramatically improves accuracy — Nominatim knows
+    //     to search in Tokyo rather than globally.
+    //
+    // FUTURE LANGUAGE SELECTOR (Feature G):
+    //   To add language support in the future, you would:
+    //   1. Add a <select id="map-lang"> to the map section HTML
+    //      with options: { value: 'en', label: 'English' },
+    //      { value: 'ko', label: '한국어' }, etc.
+    //   2. Store the chosen language in a variable: let mapLang = 'en';
+    //   3. Replace the hardcoded '&accept-language=en' below with
+    //      `&accept-language=${mapLang}`.
+    //   4. Re-run showMap() when the language changes.
+    //   For now, English is hardcoded as the only option.
+
+    // A tiny helper: returns a Promise that resolves after `ms` milliseconds.
+    // Used to pause between Nominatim requests.
+    function sleep(ms) {
+      return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
+      });
+    }
+
+    async function geocodeSinglePlace(place, destination) {
+      // Build search query: "Senso-ji Temple Tokyo Japan"
+      // Appending the destination gives Nominatim geographic context,
+      // reducing false matches (there might be many "Central Park"s).
+      const query = `${place} ${destination}`;
+
+      const url =
+        `https://nominatim.openstreetmap.org/search` +
+        `?q=${encodeURIComponent(query)}` +
+        `&format=json` +
+        `&limit=1` +
+        `&accept-language=en` +   // ← Feature F: prefer English names
+        `&namedetails=1`;          // ← returns name:en variant if available
+
+      try {
+        const response = await fetch(url, {
+          headers: { 'User-Agent': 'TravelMate/1.0' },
+        });
+
+        if (!response.ok) {
+          // HTTP error (e.g. 429 rate-limited, 500 server error)
+          console.warn(`Nominatim HTTP ${response.status} for: ${place}`);
+          return null;  // return null, not throw — partial failure is OK
+        }
+
+        const results = await response.json();
+
+        if (!results || results.length === 0) {
+          // Place not found — common for very specific or AI-invented names.
+          // We log it quietly and continue with the remaining places.
+          console.warn(`Nominatim: no result for "${place}"`);
+          return null;
+        }
+
+        const result = results[0];
+
+        // ENGLISH NAME EXTRACTION:
+        //   namedetails (if present) contains language-specific names.
+        //   We prefer name:en. If it doesn't exist, we fall back to
+        //   the result's display_name, then the original query string.
+        const nameDetails = result.namedetails || {};
+        const englishName = nameDetails['name:en'] || result.display_name || place;
+
+        return {
+          lat:         parseFloat(result.lat),
+          lon:         parseFloat(result.lon),
+          englishName: englishName,
+        };
+
+      } catch (error) {
+        // Network error (offline, DNS failure, etc.)
+        console.warn(`Nominatim fetch failed for "${place}":`, error.message);
+        return null;
+      }
+    }
+
+    async function geocodePlacesSequentially(places, destination) {
+      // Result array: { day, place, lat, lon, englishName } for each
+      // successfully geocoded place. Failed places (null result) are skipped.
+      const results = [];
+
+      for (let i = 0; i < places.length; i++) {
+        const item = places[i];
+
+        const coords = await geocodeSinglePlace(item.place, destination);
+
+        if (coords) {
+          results.push({
+            day:         item.day,
+            place:       item.place,
+            lat:         coords.lat,
+            lon:         coords.lon,
+            englishName: coords.englishName,
+          });
+        }
+
+        // Respect Nominatim's 1 request/second rate limit.
+        // We skip the delay after the very last request (no point waiting).
+        // 1100ms gives a small buffer above the 1000ms minimum.
+        if (i < places.length - 1) {
+          await sleep(1100);
+        }
+      }
+
+      return results;
+    }
+
+    // Phase 7 function — kept for backwards compatibility.
+    // Now also uses accept-language=en.
+    async function geocodeDestination(destination) {
+      const url =
+        `https://nominatim.openstreetmap.org/search` +
+        `?q=${encodeURIComponent(destination)}` +
+        `&format=json` +
+        `&limit=1` +
+        `&accept-language=en`;
+
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'TravelMate/1.0' },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Nominatim request failed (HTTP ${response.status})`);
+      }
+
+      const results = await response.json();
+
+      if (!results || results.length === 0) {
+        throw new Error(`Location not found: "${destination}"`);
+      }
+
+      return {
+        lat:         parseFloat(results[0].lat),
+        lon:         parseFloat(results[0].lon),
+        displayName: results[0].display_name,
+      };
+    }
+
+
+    // ── SECTION 4: MARKER MANAGER ─────────────────────────────────
+    //
+    // DAY COLOURS:
+    //   We assign each day a distinct colour so markers cluster
+    //   visually by day on the map. Day 1 = amber (our brand colour),
+    //   Day 2 = sky blue, Day 3 = green, and so on.
+    //   We cycle through the palette if there are more days than colours.
+    //
+    // DIVICON vs DEFAULT MARKER:
+    //   Leaflet's default marker is a blue PNG pin. DivIcon lets us
+    //   render a custom HTML element as the marker icon. We use a
+    //   small coloured circle with the day number inside.
+    //
+    //   L.divIcon({
+    //     html:      '<div class="...">1</div>'  — the HTML to render
+    //     className: ''                           — removes Leaflet's
+    //                                               default white box
+    //     iconSize:  [28, 28]                    — width × height in px
+    //     iconAnchor:[14, 14]                    — hotspot (centre of circle)
+    //     popupAnchor:[0, -14]                   — popup appears above icon
+    //   })
+    //
+    // FALLBACK MARKER:
+    //   If all attraction geocoding fails (e.g. the AI produced very
+    //   unusual place names), we fall back to a single destination
+    //   marker — exactly Phase 7 behaviour. This ensures the map
+    //   always shows SOMETHING useful.
+
+    const DAY_COLOURS = [
+      '#E8821A',  // Day 1 — amber  (our brand --accent colour)
+      '#0EA5E9',  // Day 2 — sky blue
+      '#16A34A',  // Day 3 — green
+      '#9333EA',  // Day 4 — purple
+      '#EF4444',  // Day 5 — red
+      '#F59E0B',  // Day 6 — yellow
+      '#06B6D4',  // Day 7 — cyan
+    ];
+
+    function getDayColour(dayNumber) {
+      // (dayNumber - 1) so Day 1 maps to index 0.
+      // % DAY_COLOURS.length cycles back to the start for days 8+.
+      return DAY_COLOURS[(dayNumber - 1) % DAY_COLOURS.length];
+    }
+
+    function createDayIcon(dayNumber) {
+      const colour = getDayColour(dayNumber);
+
+      return L.divIcon({
+        // The marker is a circle with the day number centred inside.
+        // We inline the background colour using a style attribute.
+        html: `
+          <div style="
+            background: ${colour};
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2.5px solid #fff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: Inter, sans-serif;
+          ">${dayNumber}</div>
+        `,
+        className:   '',         // Remove Leaflet's default white-box wrapper
+        iconSize:    [28, 28],
+        iconAnchor:  [14, 14],   // Centre of circle is the pin point
+        popupAnchor: [0, -16],   // Popup appears above the circle
+      });
+    }
+
+    // clearAllMarkers()
+    //   Removes every marker from the previous trip before
+    //   adding the new set. Without this, old markers accumulate.
+
+    function clearAllMarkers() {
+      if (!window.leafletMap) return;
+
+      window.leafletMarkers.forEach(function (marker) {
+        window.leafletMap.removeLayer(marker);
+      });
+
+      window.leafletMarkers = [];
+
+      // Also remove the single Phase 7 marker if it exists
+      if (window.leafletMarker) {
+        window.leafletMap.removeLayer(window.leafletMarker);
+        window.leafletMarker = null;
+      }
+    }
+
+    // buildAttractionPopupHTML(item, trip)
+    //   Builds the popup content for an attraction marker.
+    //   Different from the Phase 7 trip-level popup — this one
+    //   shows the attraction name, day number, city, and style.
+
+    function buildAttractionPopupHTML(item, trip) {
+      const styleLabels = {
+        adventure:  'Adventure & Outdoors',
+        cultural:   'Cultural & Historical',
+        relaxation: 'Relaxation & Wellness',
+        foodie:     'Foodie & Cuisine',
+        budget:     'Budget Backpacking',
+        luxury:     'Luxury & Fine Dining',
+      };
+
+      const styleLabel = styleLabels[trip.style] || trip.style || '—';
+      const colour     = getDayColour(item.day);
+
+      return `
+        <div class="map-popup">
+          <div class="map-popup-day-badge" style="background:${colour}">
+            Day ${item.day}
+          </div>
+          <p class="map-popup-dest">${item.place}</p>
+          <div class="map-popup-row">
+            <span class="map-popup-label">City</span>
+            <span>${trip.destination}</span>
+          </div>
+          <div class="map-popup-row">
+            <span class="map-popup-label">Style</span>
+            <span>${styleLabel}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // buildTripPopupHTML(trip) — the single fallback marker popup.
+    // Renamed from Phase 7's buildPopupHTML() to avoid collision.
+
+    function buildTripPopupHTML(trip) {
+      const styleLabels = {
+        adventure:  'Adventure & Outdoors',
+        cultural:   'Cultural & Historical',
+        relaxation: 'Relaxation & Wellness',
+        foodie:     'Foodie & Cuisine',
+        budget:     'Budget Backpacking',
+        luxury:     'Luxury & Fine Dining',
+      };
+      const budgetTierLabels = {
+        low: 'Budget-Friendly', medium: 'Mid-Range', high: 'Luxury',
+      };
+
+      const styleLabel = styleLabels[trip.style]           || trip.style      || '—';
+      const tierLabel  = budgetTierLabels[trip.budgetTier] || trip.budgetTier || '';
+
+      return `
+        <div class="map-popup">
+          <p class="map-popup-dest">${trip.destination}</p>
+          <div class="map-popup-row">
+            <span class="map-popup-label">Budget</span>
+            <span>$${trip.budget}</span>
+          </div>
+          <div class="map-popup-row">
+            <span class="map-popup-label">Style</span>
+            <span>${styleLabel}</span>
+          </div>
+          <div class="map-popup-row">
+            <span class="map-popup-label">Duration</span>
+            <span>${trip.days} day${trip.days > 1 ? 's' : ''}</span>
+          </div>
+          ${tierLabel ? `<span class="map-popup-badge">${tierLabel}</span>` : ''}
+        </div>
+      `;
+    }
+
+    // renderAllMarkers(geocodedPlaces, trip)
+    //   Places one Leaflet marker per successfully geocoded place,
+    //   then calls fitBounds() to auto-zoom to include all of them.
+    //   Also renders the day legend below the map.
+
+    function renderAllMarkers(geocodedPlaces, trip) {
+      clearAllMarkers();
+
+      if (geocodedPlaces.length === 0) {
+        // All attraction geocoding failed — fall back to single city marker.
+        // This is the Phase 7 behaviour, preserved as the safety net.
+        console.warn('No attraction coords — falling back to city marker');
+        geocodeDestination(trip.destination).then(function (coords) {
+          window.leafletMarker = L.marker([coords.lat, coords.lon])
+            .addTo(window.leafletMap)
+            .bindPopup(buildTripPopupHTML(trip), { maxWidth: 240 })
+            .openPopup();
+          window.leafletMap.setView([coords.lat, coords.lon], 13);
+        }).catch(function () {
+          showMapError('Could not locate any attractions or the destination.');
+        });
+        return;
+      }
+
+      // Build a LatLngBounds object so we can fitBounds() later.
+      // L.latLngBounds() needs at least two points to be meaningful.
+      // We seed it with the first point, then extend() with the rest.
+      const bounds = L.latLngBounds();
+
+      geocodedPlaces.forEach(function (item) {
+        const icon   = createDayIcon(item.day);
+        const latlng = [item.lat, item.lon];
+
+        const marker = L.marker(latlng, { icon: icon })
+          .addTo(window.leafletMap)
+          .bindPopup(buildAttractionPopupHTML(item, trip), { maxWidth: 240 });
+
+        window.leafletMarkers.push(marker);
+        bounds.extend(latlng);
+      });
+
+      // fitBounds() — AUTO ZOOM AND CENTRE (Feature D)
+      //
+      // L.map.fitBounds(bounds, options) adjusts the map camera so
+      // that ALL the provided coordinates are visible on screen.
+      //
+      // padding: [40, 40] adds 40px of space around the edge of the
+      // bounding box so markers aren't clipped at the viewport edge.
+      //
+      // maxZoom: 15 prevents excessive zoom-in when markers are very
+      // close together (e.g. all in one neighbourhood). Without this,
+      // a cluster of nearby temples would zoom in too far to be useful.
+      window.leafletMap.fitBounds(bounds, {
+        padding: [40, 40],
+        maxZoom: 15,
+      });
+
+      // Render the day legend below the map
+      renderMapLegend(geocodedPlaces, trip);
+    }
+
+
+    // ── SECTION 5: MAP LEGEND ─────────────────────────────────────
+    //
+    // The legend is a row of coloured pills beneath the map,
+    // one per day: ● Day 1 (3 places)  ● Day 2 (4 places)  …
+    //
+    // WHY A LEGEND?
+    //   With many markers of different colours, users need a key
+    //   to understand what each colour means. The legend makes the
+    //   colour-coding immediately obvious.
+    //
+    // We inject the legend HTML into #map-legend, which already
+    // exists in the HTML (see the map section HTML above).
+
+    function renderMapLegend(geocodedPlaces, trip) {
+      const legendEl = document.getElementById('map-legend');
+      if (!legendEl) return;
+
+      // Count how many geocoded places exist per day
+      const dayCounts = {};
+      geocodedPlaces.forEach(function (item) {
+        dayCounts[item.day] = (dayCounts[item.day] || 0) + 1;
+      });
+
+      const uniqueDays = Object.keys(dayCounts).map(Number).sort();
+
+      const pillsHTML = uniqueDays.map(function (day) {
+        const colour = getDayColour(day);
+        const count  = dayCounts[day];
+        return `
+          <span class="map-legend-pill">
+            <span class="map-legend-dot" style="background:${colour}"></span>
+            Day ${day}
+            <span class="map-legend-count">${count} place${count > 1 ? 's' : ''}</span>
+          </span>
+        `;
+      }).join('');
+
+      legendEl.innerHTML = pillsHTML
+        ? `<div class="map-legend-inner">${pillsHTML}</div>`
+        : '';
+    }
+
+
+    // ── SECTION 6: MAP CONTROLLER ─────────────────────────────────
+    //
+    // initMapIfNeeded()
+    //   Creates the Leaflet map and tile layer on the FIRST call.
+    //   On subsequent calls, does nothing (the map already exists).
+    //   This replaces Phase 7's inline create-vs-reuse branching.
+    //
+    // We separate "create the map" from "show markers" because
+    // in Phase 8 we always need the map first, then we geocode
+    // asynchronously — the map should be visible with the tile
+    // layer already loaded while geocoding happens in background.
+
+    function initMapIfNeeded() {
+      if (window.leafletMap) return;  // Already exists — nothing to do
+
+      // Default view: a neutral zoom level centred on the world.
+      // It will be replaced immediately by fitBounds() once markers load.
+      window.leafletMap = L.map('map').setView([20, 0], 2);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">' +
+          'OpenStreetMap</a> contributors',
+      }).addTo(window.leafletMap);
+    }
+
+
+    // ── SECTION 7: STATUS HELPERS ─────────────────────────────────
+    //
+    // Identical to Phase 7 — show a loading spinner or error message
+    // in the #map-status element while the actual #map div is hidden.
+
+    function showMapLoading(message) {
+      document.getElementById('map').style.display = 'none';
+      const statusEl = document.getElementById('map-status');
+      statusEl.style.display = 'flex';
+      statusEl.querySelector('.map-status-icon').textContent = '🌍';
+      document.getElementById('map-status-text').textContent =
+        message || 'Loading map…';
+    }
+
+    function showMapError(message) {
+      document.getElementById('map').style.display = 'none';
+      const statusEl = document.getElementById('map-status');
+      statusEl.style.display = 'flex';
+      statusEl.querySelector('.map-status-icon').textContent = '⚠️';
+      document.getElementById('map-status-text').textContent = message;
+    }
+
+    function showMapCanvas() {
+      document.getElementById('map-status').style.display = 'none';
+      document.getElementById('map').style.display = 'block';
+
+      // invalidateSize() — same as Phase 7.
+      // Forces Leaflet to re-measure the container after display:block.
+      setTimeout(function () {
+        if (window.leafletMap) window.leafletMap.invalidateSize();
+      }, 10);
+    }
+
+
+    // ── SECTION 8: MAIN ENTRY POINT ──────────────────────────────
+    //
+    // showMap(trip)
+    //   The single function called from outside (by generateItinerary,
+    //   viewSavedTrip, and viewMap). Everything else is private.
+    //
+    // PHASE 8 FLOW:
+    //   1. Validate
+    //   2. Show the section, scroll to it
+    //   3. Show loading state
+    //   4. Show the map canvas (tiles load in background)
+    //   5. Init the map if it doesn't exist yet
+    //   6. Extract itinerary places
+    //   7. Update subtitle with place count
+    //   8. If places found: geocode sequentially → renderAllMarkers
+    //      If no places: fall back to single destination marker
+    //
+    // Note on "no itinerary" case:
+    //   If trip.itinerary is missing (e.g. a very old saved record),
+    //   we fall back to geocoding just the destination — Phase 7 behaviour.
+
+    async function showMap(trip) {
+      if (!trip || !trip.destination) {
+        alert('No trip data available for the map.');
+        return;
+      }
+
+      // Step 2: Reveal and scroll to the map section
+      const mapSection = document.getElementById('map-section');
+      mapSection.style.display = 'block';
+      mapSection.scrollIntoView({ behavior: 'smooth' });
+
+      // Step 3: Show the loading state immediately
+      showMapLoading(`Locating attractions in ${trip.destination}…`);
+
+      // Step 4: Show the map canvas so tiles start loading in parallel
+      // with our geocoding. The loading overlay sits in #map-status,
+      // not on top of the map — so we show both simultaneously.
+      // We then swap to the map canvas once everything is ready.
+      // (We keep the map-status visible during geocoding by not calling
+      // showMapCanvas() yet — but we DO initialise the map now.)
+
+      // Step 5: Create the Leaflet map instance if needed
+      // We do this now so tiles start loading in the background
+      // while we geocode. The map div must be visible for this.
+      document.getElementById('map-status').style.display = 'flex';
+      document.getElementById('map').style.display = 'none';
+      initMapIfNeeded();
+
+      // Step 6: Extract places from the itinerary
+      const places = trip.itinerary
+        ? extractItineraryPlaces(trip.itinerary)
+        : [];
+
+      // Step 7: Update the subtitle with the count of attractions found
+      const placeCount = places.length;
+      document.getElementById('map-subtitle').textContent =
+        placeCount > 0
+          ? `Mapping ${placeCount} attraction${placeCount > 1 ? 's' : ''} across ${trip.days} day${trip.days > 1 ? 's' : ''} in ${trip.destination}`
+          : `Showing destination: ${trip.destination}`;
+
+      // Step 8: Geocode and render
+      if (places.length > 0) {
+        // --- MULTI-MARKER PATH ---
+        // We update the loading message to show progress.
+        // Geocoding N places takes N seconds — we want the user to
+        // know something is happening, not think the page is frozen.
+        showMapLoading(
+          `Finding ${places.length} attraction${places.length > 1 ? 's' : ''} on the map` +
+          ` (this takes ~${places.length} second${places.length > 1 ? 's' : ''})…`
+        );
+
+        try {
+          const geocodedPlaces = await geocodePlacesSequentially(
+            places,
+            trip.destination
+          );
+
+          // Show the map canvas now that geocoding is done
+          showMapCanvas();
+
+          if (geocodedPlaces.length > 0) {
+            renderAllMarkers(geocodedPlaces, trip);
+          } else {
+            // All N geocoding calls returned null — fall back
+            console.warn('All attraction geocoding failed — using city fallback');
+            await fallbackToCityMarker(trip);
+          }
+
+        } catch (error) {
+          console.error('showMap error:', error.message);
+          showMapError('Something went wrong loading the map. Please try again.');
+        }
+
+      } else {
+        // --- SINGLE MARKER FALLBACK PATH ---
+        // No itinerary data → fall back to the city-level marker
+        // (exact Phase 7 behaviour).
+        try {
+          await fallbackToCityMarker(trip);
+          showMapCanvas();
+        } catch (error) {
+          showMapError(
+            error.message.includes('not found')
+              ? `Could not find "${trip.destination}" on the map. Try a more specific name.`
+              : 'Could not load the map. Check your internet connection.'
+          );
+        }
+      }
+    }
+
+    // fallbackToCityMarker(trip)
+    //   Phase 7 behaviour: geocode the destination city and place
+    //   a single marker with the trip-level popup. Used when:
+    //   - trip.itinerary is missing
+    //   - all attraction geocoding fails
+
+    async function fallbackToCityMarker(trip) {
+      const coords = await geocodeDestination(trip.destination);
+
+      clearAllMarkers();
+
+      window.leafletMarker = L.marker([coords.lat, coords.lon])
+        .addTo(window.leafletMap)
+        .bindPopup(buildTripPopupHTML(trip), { maxWidth: 240 })
+        .openPopup();
+
+      window.leafletMap.setView([coords.lat, coords.lon], 13, { animate: true });
+      showMapCanvas();
+
+      // Clear the legend when showing the city-only marker
+      const legendEl = document.getElementById('map-legend');
+      if (legendEl) legendEl.innerHTML = '';
+    }
+
+
+    // ── viewMap() ─────────────────────────────────────────────────
+    // Called by the "View on Map" button in the results section.
+    // Unchanged from Phase 7 in signature — only showMap() changed.
+
     function viewMap() {
-      // Phase 6: Will show locations on a Leaflet map
-      alert("🗺️ Map view coming in Phase 6!");
+      if (!window.currentTrip) {
+        alert('Generate a trip first before viewing the map.');
+        return;
+      }
+      showMap(window.currentTrip);
     }
 
     // -------------------------------------------------------

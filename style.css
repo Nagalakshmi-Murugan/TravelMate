@@ -1,6 +1,6 @@
 /*
   ================================================================
-  TravelMate — style.css
+  TravelMate AI — style.css
   ================================================================
   CSS controls how every element LOOKS: colors, fonts, spacing,
   layout, and animations.
@@ -807,4 +807,246 @@ a {
   .saved-trip-actions {
     justify-content: center;
   }
+}
+
+/* ============================================================
+   17. PHASE 7 — INTERACTIVE MAP (Leaflet + OpenStreetMap)
+   ============================================================
+   The map section sits between the results section and the
+   saved trips section. It is hidden by default (display:none)
+   and revealed by JavaScript whenever showMap() is called.
+
+   KEY CONCEPT — Why we need explicit height on #map:
+     Leaflet renders its tiles into a <div>. If that div has
+     no height, Leaflet renders into a 0px box — you see
+     nothing. Unlike regular HTML content, a map doesn't
+     "grow" to fit its contents. We must set an explicit
+     pixel height so Leaflet has space to render into.
+============================================================ */
+
+/* ── THE MAP SECTION WRAPPER ────────────────────────────── */
+#map-section {
+  display: none;          /* Hidden until a trip is generated */
+  padding: var(--space-lg) 0;
+  background-color: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+/* ── MAP SECTION HEADER ─────────────────────────────────── */
+.map-header {
+  text-align: center;
+  margin-bottom: var(--space-md);
+}
+
+.map-title {
+  font-size: 1.6rem;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.map-subtitle {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* ── THE ACTUAL MAP CONTAINER ───────────────────────────── */
+/*
+  #map is the <div> that Leaflet mounts into.
+
+  height: 420px — Leaflet REQUIRES an explicit pixel height.
+    On mobile we reduce it to 280px (see media query below).
+
+  border-radius — matches our design system's --radius-md.
+
+  overflow: hidden — clips the map tiles to the rounded
+    corners so the tiles don't "bleed" past the border.
+
+  z-index: 1 — Leaflet's own controls (zoom buttons, tiles)
+    use z-index internally. Setting 1 on the wrapper keeps
+    the map below our navbar (z-index: 100).
+
+  position: relative — required for Leaflet's internal
+    absolute-positioned elements to work correctly.
+*/
+#map {
+  height: 420px;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  z-index: 1;
+  position: relative;
+}
+
+/* ── MAP STATUS MESSAGES ────────────────────────────────── */
+/*
+  Shown in two situations:
+  1. While we're waiting for the Nominatim geocoding response
+  2. When geocoding fails (bad destination, network error)
+
+  We use a flex column so the icon and text stack vertically.
+*/
+#map-status {
+  display: none;   /* Hidden unless JS activates it */
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  height: 420px;   /* Same height as #map so it takes identical space */
+  background: var(--bg-alt);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-align: center;
+  padding: var(--space-md);
+}
+
+.map-status-icon {
+  font-size: 2.5rem;
+  margin-bottom: 4px;
+}
+
+/* ── LEAFLET POPUP CUSTOMISATION ───────────────────────────
+   Leaflet's default popup is functional but plain. We override
+   the border-radius and padding to match TravelMate's design.
+
+   .leaflet-popup-content-wrapper — the white speech-bubble box
+   .leaflet-popup-tip            — the small triangle at the bottom
+   .leaflet-popup-content       — the text area inside the bubble
+*/
+.leaflet-popup-content-wrapper {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-md) !important;
+  border: 1px solid var(--border);
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  width: 220px !important;
+}
+
+/* Our custom popup inner layout */
+.map-popup {
+  padding: 14px 16px;
+}
+
+.map-popup-dest {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: var(--ink);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.map-popup-row {
+  font-size: 0.82rem;
+  color: var(--body);
+  margin-bottom: 3px;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.map-popup-label {
+  color: var(--muted);
+  font-weight: 500;
+  min-width: 52px;
+}
+
+.map-popup-badge {
+  display: inline-block;
+  margin-top: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
+}
+
+/* ── RESPONSIVE — MOBILE ────────────────────────────────── */
+@media (max-width: 600px) {
+  #map,
+  #map-status {
+    height: 280px;  /* Shorter map on phones — still usable */
+  }
+}
+
+/* ============================================================
+   18. PHASE 8 — MULTI-MARKER MAP ENHANCEMENTS
+   ============================================================
+   New styles for:
+     - Day-coloured marker popups (.map-popup-day-badge)
+     - The legend below the map (#map-legend, .map-legend-pill)
+   All existing Phase 7 map styles above are unchanged.
+============================================================ */
+
+/* ── ATTRACTION POPUP: DAY BADGE ────────────────────────────
+   A coloured pill inside the popup showing "Day 1", "Day 2", etc.
+   The background colour is set inline by JS (getDayColour) so
+   the badge colour matches the marker pin above it.
+*/
+.map-popup-day-badge {
+  display: inline-block;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+/* ── MAP LEGEND ─────────────────────────────────────────────
+   Sits below the #map div.
+   Hidden when empty (no content = no visible space taken).
+   Becomes visible once renderMapLegend() fills it with pills.
+*/
+#map-legend {
+  margin-top: 14px;
+  min-height: 0;
+}
+
+.map-legend-inner {
+  display: flex;
+  flex-wrap: wrap;       /* pills wrap to a new row on small screens */
+  gap: 8px;
+  justify-content: center;
+}
+
+/* ── LEGEND PILL ────────────────────────────────────────────
+   One pill per day: ● Day 1  (3 places)
+   The dot background colour is set inline by JS.
+*/
+.map-legend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 12px 4px 8px;
+  font-size: 0.8rem;
+  color: var(--body);
+  font-weight: 500;
+}
+
+.map-legend-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  /* background set inline by JS */
+}
+
+.map-legend-count {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.75rem;
 }
