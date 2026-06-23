@@ -180,5 +180,6 @@ This project helped me learn:
 * Git and GitHub workflows
 
 ## Author
+Nagalakshmi
 
 Developed as a full-stack portfolio project using modern web technologies.
