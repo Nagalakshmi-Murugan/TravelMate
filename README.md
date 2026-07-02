@@ -1,109 +1,101 @@
-# TravelMate
+# TravelMate 🧳
 
-TravelMate is a full-stack travel planning application that helps users generate personalized travel itineraries based on destination, budget, travel style, and trip duration.
+TravelMate is a full-stack travel planning application that generates personalized itineraries based on destination, budget, travel style, and trip duration — combining AI-powered generation with a rule-based fallback engine for reliability.
 
-The application combines AI-powered itinerary generation with a rule-based fallback engine to ensure reliable trip planning. Users can save trips, manage trip history, and export itineraries as PDF documents.
+🔗 **Repo:** https://github.com/Nagalakshmi-Murugan/TravelMate
+
+---
+
+## Demo
+```markdown
+![TravelMate Demo](./screenshots/demo.mp4)
+```
+
+## Screenshots:
+
+```markdown
+| Trip Input Form | Generated Itinerary | PDF Export |
+|---|---|---|
+| ![Input](./screenshots/input_form.png) | ![Itinerary](./screenshots/itinerary.png) | ![PDF](./screenshots/pdf.png) |
+```
+
+---
 
 ## Features
 
-* AI-powered itinerary generation
-* Rule-based fallback engine
-* Personalized trip planning
-* Save trips to MySQL database
-* View trip history
-* Delete saved trips
-* PDF itinerary export
-* Responsive user interface
-* REST API architecture
-* Express backend integration
+- AI-powered itinerary generation (Groq API, Llama 3.3 70B)
+- Rule-based fallback engine (used automatically if the AI service is unavailable)
+- Personalized trip planning by destination, budget, travel style, and duration
+- Interactive multi-location maps (Leaflet.js + OpenStreetMap tiles) with day-coloured markers, popups, and auto-fit bounds
+- Destination and per-attraction geocoding via Nominatim (rate-limited to respect its usage policy)
+- Save trips to a MySQL database, view trip history, delete saved trips
+- PDF itinerary export
+- REST API architecture with an Express backend
+- Responsive UI
 
 ## Tech Stack
 
-### Frontend
+| Layer | Technology |
+|---|---|
+| Frontend | HTML5, CSS3, JavaScript |
+| Backend | Node.js, Express.js |
+| Database | MySQL |
+| Other | PDF generation library, AI API integration, dotenv, cors |
 
-* HTML5
-* CSS3
-* JavaScript
+## Architecture
 
-### Backend
-
-* Node.js
-* Express.js
-
-### Database
-
-* MySQL
-
-### Additional Libraries
-
-* PDF generation library
-* AI API integration
-* dotenv
-* cors
-
-## Project Architecture
-
-```text
+```
 User Interface
-       |
-       v
+       │
+       ▼
 Express Backend
-       |
-       +-------------------+
-       |                   |
-       v                   v
-AI Itinerary Engine   Rule-Based Engine
-       |
-       v
+       │
+       ├──────────────┬──────────────┐
+       ▼              ▼
+AI Itinerary     Rule-Based
+    Engine          Engine
+       │
+       ▼
 MySQL Database
-       |
-       v
-PDF Export
+       │
+       ├──────────────┐
+       ▼              ▼
+   PDF Export    Leaflet Map
+                  (Nominatim
+                  geocoding)
 ```
 
 ## How It Works
 
-1. User enters:
+1. User enters destination, travel dates, budget, and travel style.
+2. The request is sent to the Express backend.
+3. The backend attempts to generate an itinerary via the AI service (Groq LLM API).
+4. If the AI service is unavailable, the app automatically falls back to the rule-based itinerary engine.
+5. The itinerary is displayed to the user, along with an interactive map (Leaflet.js) that geocodes each attraction via Nominatim and drops day-coloured markers.
+6. Users can save the trip, view saved trips, delete trips, or export the itinerary as a PDF.
 
-   * Destination
-   * Travel Dates
-   * Budget
-   * Travel Style
+---
 
-2. TravelMate sends the request to the Express backend.
+## Getting Started
 
-3. The backend attempts to generate an itinerary using the AI service.
+### Prerequisites
+- Node.js (v18+ recommended)
+- MySQL (v8+ recommended)
+- An API key for the AI provider used (Groq)
 
-4. If the AI service is unavailable, the application automatically switches to the rule-based itinerary engine.
-
-5. The generated itinerary is displayed to the user.
-
-6. Users can:
-
-   * Save trips
-   * View saved trips
-   * Delete saved trips
-   * Export itineraries as PDF
-
-## Installation
-
-### Clone the Repository
-
+### 1. Clone the repo
 ```bash
-git clone <your-repository-url>
-cd travelmate
+git clone https://github.com/Nagalakshmi-Murugan/TravelMate.git
+cd TravelMate
 ```
 
-### Install Dependencies
-
+### 2. Install dependencies
 ```bash
 npm install
 ```
 
-### Configure Environment Variables
-
-Create a `.env` file in the project root.
-
+### 3. Configure environment variables
+Create a `.env` file in the project root:
 ```env
 PORT=3000
 
@@ -117,28 +109,7 @@ DB_PASSWORD=your_password
 DB_NAME=travelmate
 ```
 
-### Start the Server
-
-```bash
-npm start
-```
-
-or
-
-```bash
-node server.js
-```
-
-### Open the Application
-
-```text
-http://localhost:3000
-```
-
-## Database
-
-Example database table:
-
+### 4. Set up the database
 ```sql
 CREATE TABLE trips (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -152,34 +123,50 @@ CREATE TABLE trips (
 );
 ```
 
+### 5. Start the server
+```bash
+npm start
+# or
+node server.js
+```
+
+Visit `http://localhost:3000` in your browser.
+
+---
+
+## Project Structure
+
+```
+TravelMate/
+├── backend/       # Express server, routes, controllers, DB logic
+├── database/       # Schema / DB setup files
+├── frontend/       # HTML, CSS, JS client
+├── .gitignore
+└── README.md
+```
+
+---
+
 ## Future Enhancements
 
-* Interactive maps using Leaflet and OpenStreetMap
-* Trip sharing functionality
-* User authentication
-* Trip favorites
-* Calendar integration
-* Multi-destination trip planning
-
-## Screenshots
-
-Add screenshots here after completing the UI.
+- Trip sharing functionality
+- User authentication
+- Trip favorites
+- Calendar integration
+- Multi-destination trip planning
 
 ## Learning Outcomes
 
-This project helped me learn:
-
-* Full-stack web development
-* REST API design
-* Node.js and Express
-* MySQL integration
-* Database CRUD operations
-* Environment variable management
-* PDF generation
-* AI API integration
-* Git and GitHub workflows
+Building this project involved:
+- Full-stack web development and REST API design
+- Node.js and Express fundamentals
+- MySQL integration and CRUD operations
+- Environment variable management
+- PDF generation
+- AI API integration with a fallback strategy
+- Git and GitHub workflows
 
 ## Author
-Nagalakshmi
 
-Developed as a full-stack portfolio project using modern web technologies.
+**Nagalakshmi**
+📧 n4772754@gmail.com | 🔗 [GitHub](https://github.com/Nagalakshmi-Murugan)
