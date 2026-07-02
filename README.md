@@ -7,17 +7,16 @@ TravelMate is a full-stack travel planning application that generates personaliz
 ---
 
 ## Demo
-```markdown
+
 ![TravelMate Demo](./screenshots/demo.mp4)
-```
+
 
 ## Screenshots:
 
-```markdown
+
 | Trip Input Form | Generated Itinerary | PDF Export |
-|---|---|---|
 | ![Input](./screenshots/input_form.png) | ![Itinerary](./screenshots/itinerary.png) | ![PDF](./screenshots/pdf.png) |
-```
+
 
 ---
 
