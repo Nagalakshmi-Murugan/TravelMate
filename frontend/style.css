@@ -1050,3 +1050,184 @@ a {
   font-weight: 400;
   font-size: 0.75rem;
 }
+
+/* ============================================================
+   PHASE 1: Authentication Pages (register.html / login.html)
+   ============================================================ */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.auth-card {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-title {
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.auth-subtitle {
+  text-align: center;
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-form label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.auth-form input {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #4f46e5;
+}
+
+.auth-form button {
+  margin-top: 20px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #4f46e5;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 0.9rem;
+}
+
+/* The "Create one" / "Log in" links inside auth-footer.
+   Uses the same --accent / --accent-dark hover convention as the
+   rest of the site (e.g. .nav-links a, .btn-primary). */
+.auth-footer a {
+  color: var(--accent);
+  font-weight: 600;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+  text-decoration: underline;
+  text-decoration-color: transparent; /* invisible until hover */
+}
+
+.auth-footer a:hover {
+  color: var(--accent-dark);
+  text-decoration-color: var(--accent-dark); /* underline fades in */
+}
+
+.form-message {
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+.form-message.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.form-message.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+
+/* ============================================================
+   PHASE 3: Navbar Auth Area (Welcome message + Logout button)
+   ============================================================ */
+
+.nav-auth {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.nav-user-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* Shrinks the existing .btn/.btn-outline styles down to fit
+   comfortably inside the navbar instead of their default
+   full-size padding. */
+.nav-auth .btn {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+
+/* ============================================================
+   Bonus: My Account page (account.html)
+   ============================================================ */
+
+.account-info {
+  margin-bottom: 8px;
+}
+
+.account-field {
+  font-size: 0.95rem;
+  color: var(--body);
+  margin-bottom: 8px;
+}
+
+.account-field strong {
+  color: var(--ink);
+}
+
+.account-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+
+.account-section-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+}
+
+/* Small "My Account" link that sits in the navbar next to the
+   welcome message and logout button. */
+.nav-account-link {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.nav-account-link:hover {
+  color: var(--accent-dark);
+}

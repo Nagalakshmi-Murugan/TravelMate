@@ -90,6 +90,15 @@
         <li><a href="#map-section">Map</a></li>
         <li><a href="#saved">Saved Trips</a></li>
       </ul>
+
+      <!-- Phase 3 (Auth): shows who's logged in + a logout button.
+           Starts empty — filled in by checkSession() once the page
+           confirms who's logged in (see script near DOMContentLoaded). -->
+      <div class="nav-auth">
+        <span id="navUserName" class="nav-user-name"></span>
+        <a href="account.html" class="nav-account-link">My Account</a>
+        <button id="logoutBtn" class="btn btn-outline">Logout</button>
+      </div>
     </div>
   </nav>
 
@@ -717,6 +726,13 @@
         const response = await fetch(`${API_BASE}/api/trips`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+
+          // Phase 3 (Auth): /api/trips now requires a logged-in
+          // session. credentials: 'include' makes sure the browser
+          // attaches our session cookie to this request — without
+          // it, the server would see no session and reject with 401.
+          credentials: 'include',
+
           body: JSON.stringify(window.currentTrip)
         });
 
@@ -758,7 +774,12 @@
       const emptyEl = document.getElementById('saved-empty');
 
       try {
-        const response = await fetch(`${API_BASE}/api/trips`);
+        // Phase 3 (Auth): credentials: 'include' so the session
+        // cookie is sent — the server now only returns trips that
+        // belong to the logged-in user.
+        const response = await fetch(`${API_BASE}/api/trips`, {
+          credentials: 'include'
+        });
         const data = await response.json();
 
         if (!response.ok) {
@@ -896,7 +917,11 @@
 
       try {
         const response = await fetch(`${API_BASE}/api/trips/${id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+
+          // Phase 3 (Auth): required so the server can identify
+          // WHO is deleting — and refuse if it's not their trip.
+          credentials: 'include'
         });
 
         const data = await response.json();
@@ -1996,6 +2021,59 @@
     }
 
     // -------------------------------------------------------
+    // PHASE 3 (Auth): SESSION AWARENESS — who's logged in?
+    // -------------------------------------------------------
+    //
+    // The server already blocks a logged-out browser from ever
+    // reaching this page (see server.js's page guard, which
+    // redirects to login.html before index.html is even sent).
+    // So by the time this script runs, we ALREADY know someone
+    // is logged in. We still call /api/session here for one
+    // reason: to find out WHO, so we can display their name in
+    // the navbar.
+    async function checkSession() {
+      try {
+        const response = await fetch(`${API_BASE}/api/session`, {
+          credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.loggedIn) {
+          document.getElementById('navUserName').textContent = `Hi, ${data.user.name}`;
+        } else {
+          // Extra safety net: if the session expired in the brief
+          // moment between the server's page guard and this check
+          // running, send them to login.html rather than leaving
+          // them on a page with none of their own data.
+          window.location.href = 'login.html';
+        }
+      } catch (error) {
+        console.error('Session check failed:', error);
+      }
+    }
+
+    // -------------------------------------------------------
+    // logout()
+    //   Calls POST /api/logout to destroy the session server-side,
+    //   then sends the browser back to the login page.
+    // -------------------------------------------------------
+    async function logout() {
+      try {
+        await fetch(`${API_BASE}/api/logout`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+      } catch (error) {
+        console.error('Logout request failed:', error);
+      }
+      // Redirect regardless of whether the request succeeded —
+      // either way we want the user off this page.
+      window.location.href = 'login.html';
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    // -------------------------------------------------------
     // PAGE LOAD: Fetch saved trips as soon as the page opens
     // -------------------------------------------------------
     //
@@ -2007,6 +2085,7 @@
     // the Saved Trips section populates automatically from
     // the database — no button click needed.
     document.addEventListener('DOMContentLoaded', function () {
+      checkSession();
       loadSavedTrips();
     });
   </script>

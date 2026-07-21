@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TravelMate — Create Account</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="auth-page">
+  <div class="auth-card">
+
+    <h1 class="auth-title">✈️ TravelMate</h1>
+    <p class="auth-subtitle">Create your account</p>
+
+    <!-- This <div> is empty until JS puts an error/success message
+         inside it. Keeping it in the HTML (rather than creating it
+         dynamically) makes the layout stable — no content "jumping"
+         around when a message appears. -->
+    <div id="formMessage" class="form-message" style="display: none;"></div>
+
+    <form id="registerForm" class="auth-form">
+
+      <label for="name">Full Name</label>
+      <input type="text" id="name" name="name" placeholder="e.g. Priya Sharma" autocomplete="name">
+
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email">
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" placeholder="At least 6 characters" autocomplete="new-password">
+
+      <label for="confirmPassword">Confirm Password</label>
+      <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Re-enter your password" autocomplete="new-password">
+
+      <button type="submit" id="registerBtn">Create Account</button>
+
+    </form>
+
+    <p class="auth-footer">
+      Already have an account? <a href="login.html">Log in</a>
+    </p>
+
+  </div>
+</div>
+
+<script>
+  // Same API_BASE pattern as index.html — one place to change
+  // the backend URL if it's ever different from localhost:3000.
+  const API_BASE = 'http://localhost:3000';
+
+  const form        = document.getElementById('registerForm');
+  const messageBox  = document.getElementById('formMessage');
+  const registerBtn = document.getElementById('registerBtn');
+
+  // Small helper so we don't repeat the same 4 lines everywhere.
+  // type is either 'error' (red) or 'success' (green) — matched
+  // by CSS classes added in style.css.
+  function showMessage(text, type) {
+    messageBox.textContent = text;
+    messageBox.className = 'form-message ' + type; // 'error' or 'success'
+    messageBox.style.display = 'block';
+  }
+
+  form.addEventListener('submit', async function (event) {
+    // Forms normally reload the page on submit — preventDefault()
+    // stops that, so we can handle everything with JavaScript instead.
+    event.preventDefault();
+
+    const name            = document.getElementById('name').value.trim();
+    const email           = document.getElementById('email').value.trim();
+    const password        = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    // ── FRONTEND VALIDATION ──────────────────────────────────
+    // This exists purely for a fast, friendly user experience —
+    // the REAL security check happens on the server (routes/auth.js),
+    // which can never be skipped no matter what the browser does.
+
+    if (!name || !email || !password || !confirmPassword) {
+      showMessage('Please fill in all fields.', 'error');
+      return;
+    }
+
+    if (password.length < 6) {
+      showMessage('Password must be at least 6 characters long.', 'error');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      showMessage('Passwords do not match. Please re-enter them.', 'error');
+      return;
+    }
+
+    // Disable the button while the request is in flight, so an
+    // impatient user can't click "Create Account" five times and
+    // accidentally submit five requests.
+    registerBtn.disabled = true;
+    registerBtn.textContent = 'Creating account...';
+
+    try {
+      const response = await fetch(`${API_BASE}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Server sent back a 4xx/5xx status — data.error holds
+        // the friendly message routes/auth.js wrote for us.
+        showMessage(data.error || 'Registration failed. Please try again.', 'error');
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Create Account';
+        return;
+      }
+
+      // Success! Briefly show a confirmation, then redirect.
+      showMessage('Account created! Redirecting to login...', 'success');
+
+      setTimeout(function () {
+        window.location.href = 'login.html';
+      }, 1200);
+
+    } catch (error) {
+      // This catch fires for network failures (server not running,
+      // no internet, etc.) — NOT for validation errors, which are
+      // handled above via response.ok.
+      console.error('Registration request failed:', error);
+      showMessage('Could not reach the server. Is it running?', 'error');
+      registerBtn.disabled = false;
+      registerBtn.textContent = 'Create Account';
+    }
+  });
+</script>
+
+</body>
+</html>

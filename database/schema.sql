@@ -80,9 +80,9 @@ USE travelmate;
 --   created_at    — TIMESTAMP that MySQL sets AUTOMATICALLY when
 --                    a row is inserted (DEFAULT CURRENT_TIMESTAMP).
 --                    Useful for sorting "most recently saved first".
-
 CREATE TABLE IF NOT EXISTS trips (
   id          INT AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT           NOT NULL,
   destination VARCHAR(255)  NOT NULL,
   start_date  DATE          NOT NULL,
   end_date    DATE          NOT NULL,
@@ -92,9 +92,9 @@ CREATE TABLE IF NOT EXISTS trips (
   summary     VARCHAR(255),
   budget_tier VARCHAR(20),
   itinerary   JSON          NOT NULL,
-  created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+  created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
 
 -- ── STEP 3 (OPTIONAL): VERIFY IT WORKED ──────────────────────
 --
@@ -105,3 +105,39 @@ CREATE TABLE IF NOT EXISTS trips (
 --   USE travelmate;
 --   SHOW TABLES;                   -- should list "trips"
 --   DESCRIBE trips;                -- shows all columns and types
+
+-- ── STEP 4: CREATE THE USERS TABLE (Phase 1: Registration) ──
+--
+-- TABLE DESIGN EXPLANATION (column by column):
+--
+--   id            — Unique identifier for each user.
+--                    Same AUTO_INCREMENT + PRIMARY KEY pattern
+--                    as the trips table.
+--
+--   name          — VARCHAR(100). The user's display name.
+--                    100 chars is generous for any real name.
+--
+--   email         — VARCHAR(255). NOT NULL because every account
+--                    needs one. UNIQUE means MySQL will REJECT
+--                    an INSERT if that email already exists —
+--                    this is our database-level safety net for
+--                    "email must be unique" (in addition to the
+--                    check we also do in JavaScript).
+--
+--   password      — VARCHAR(255). This does NOT store the real
+--                    password — it stores the bcrypt HASH, which
+--                    looks like "$2b$10$N9qo8uLOickgx2ZMRZoMye...".
+--                    Bcrypt hashes are always 60 characters, so
+--                    255 gives comfortable headroom.
+--
+--   created_at    — TIMESTAMP, auto-set on insert. Same pattern
+--                    as trips.created_at — useful for "member
+--                    since" displays later.
+
+CREATE TABLE IF NOT EXISTS users (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(100)  NOT NULL,
+  email       VARCHAR(255)  NOT NULL UNIQUE,
+  password    VARCHAR(255)  NOT NULL,
+  created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
