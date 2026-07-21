@@ -51,6 +51,21 @@ const groqService = require('./groqService');
 // import the ready-to-use pool and call .query() / .execute() on it.
 const pool = require('./db');
 
+// Phase 1 (Auth): bcrypt hashes passwords, express-session manages
+// logged-in state via cookies. These are the ONLY two auth
+// packages this project uses — no JWT, no Passport, no OAuth.
+const session = require('express-session');
+
+// Our new auth routes (registration + login/logout/session).
+// Same pattern as itineraryEngine/groqService — a self-contained
+// module that server.js just plugs in.
+const authRoutes = require('./routes/auth');
+
+// Phase 3: gatekeeper middleware — blocks a route/page unless
+// the request has a logged-in session. See the file itself for
+// the full explanation of how Express middleware chaining works.
+const requireAuth = require('./middleware/requireAuth');
+
 
 // --- 2. CREATE THE EXPRESS APP ---
 
@@ -72,17 +87,90 @@ const PORT = process.env.PORT || 3000;
 // app.use(...) registers a piece of middleware.
 
 // cors() middleware: allows cross-origin requests from your frontend.
-app.use(cors());
+//
+// Phase 2 (Auth) UPDATE: session-based login relies on a cookie
+// being sent back and forth between browser and server. Cookies
+// are more restrictive than plain requests — by default, browsers
+// won't send/accept them on cross-origin requests at all.
+//
+//   origin: true         — reflects whatever origin the request
+//                           came from (needed instead of the
+//                           default '*', because browsers refuse
+//                           to allow credentialed requests with a
+//                           wildcard origin).
+//   credentials: true    — tells the browser this server allows
+//                           cookies to be included in cross-origin
+//                           requests.
+//
+// NOTE: since express.static already serves your frontend from
+// this same server (http://localhost:3000), register.html/login.html
+// opened via that URL are actually same-origin with the API — this
+// CORS config mainly protects you if you ever serve the frontend
+// from a different port/tool during development.
+app.use(cors({ origin: true, credentials: true }));
 
 // express.json() middleware: when a POST request arrives with a JSON
 // body, this automatically parses it into a JavaScript object.
 // Without this, req.body would be undefined in POST routes.
 app.use(express.json());
 
+// Phase 1 (Auth): session middleware — lets Express remember "this
+// browser is logged in" using a signed cookie. We're setting this
+// up now so server.js doesn't need restructuring again in Phase 2 —
+// but no route actually creates a session yet (that starts with
+// Phase 2's login route).
+app.use(session({
+  // secret cryptographically signs the session cookie, so a user
+  // can't forge or tamper with it. Comes from .env — NEVER hardcode
+  // secrets directly in your code.
+  secret: process.env.SESSION_SECRET,
+
+  // resave: false — don't re-save the session on every single
+  // request if nothing in it changed. Recommended default.
+  resave: false,
+
+  // saveUninitialized: false — don't create a session for visitors
+  // who aren't logged in (e.g. someone just browsing index.html).
+  // Saves memory, avoids clutter.
+  saveUninitialized: false,
+
+  cookie: {
+    // maxAge is in milliseconds — sessions expire 24 hours after
+    // the cookie is issued.
+    maxAge: 1000 * 60 * 60 * 24
+  }
+}));
+
+// Phase 3: PAGE GUARD — block the main app page unless logged in.
+//
+// This must be registered BEFORE express.static below, because
+// Express runs middleware/routes in the order they're added, and
+// whichever one responds first "wins". If express.static ran
+// first, it would just serve index.html straight from disk and
+// this check would never get a chance to run.
+//
+// We only guard '/', '/index.html', and '/account.html' — NOT
+// '/login.html', '/register.html', or '/style.css' — those must
+// stay reachable by a logged-OUT visitor, otherwise they could
+// never log in or register in the first place!
+//
+// res.redirect() sends the browser an instruction to go fetch a
+// different URL — this happens before any HTML is ever sent, so
+// there's no flash of the real page content for a logged-out user.
+app.get(['/', '/index.html', '/account.html'], function (req, res, next) {
+  if (!req.session || !req.session.userId) {
+    return res.redirect('/login.html');
+  }
+  // Logged in — fall through to express.static below, which will
+  // actually read and send the index.html file from disk.
+  next();
+});
+
 // express.static() serves your HTML, CSS, and JS files as-is.
 // __dirname is a built-in variable = the folder this server.js is in.
 // So this means: "serve all files in the same folder as server.js".
-// When someone visits http://localhost:3000, they get index.html.
+// When someone visits http://localhost:3000, they get index.html
+// (after passing the page guard above).
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 
@@ -239,10 +327,12 @@ app.post('/api/generate', async function (req, res) {
 // POST /api/trips
 //
 // PHASE 4: Inserts the trip into the MySQL "trips" table.
+// PHASE 3 (Auth): now requires login (requireAuth) and stamps
+// the trip with the logged-in user's id, so it's clear who owns it.
 //
 // "async" is needed here because pool.execute() returns a
 // Promise — it has to travel to MySQL and back, which takes time.
-app.post('/api/trips', async function (req, res) {
+app.post('/api/trips', requireAuth, async function (req, res) {
 
   // Destructure everything the frontend sends us.
   // This object shape matches window.currentTrip in index.html:
@@ -252,6 +342,11 @@ app.post('/api/trips', async function (req, res) {
     destination, startDate, endDate, budget,
     style, days, summary, budgetTier, itinerary
   } = req.body;
+
+  // req.session.userId is only available because requireAuth
+  // already confirmed it exists — that's the whole point of
+  // running that middleware before this handler.
+  const userId = req.session.userId;
 
   // --- Validation ---
   // Make sure we have the minimum required data before touching
@@ -281,11 +376,12 @@ app.post('/api/trips', async function (req, res) {
     //   Example: [ {day:1} ]  →  '[{"day":1}]'
     const sql = `
       INSERT INTO trips
-        (destination, start_date, end_date, budget, style, days, summary, budget_tier, itinerary)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, destination, start_date, end_date, budget, style, days, summary, budget_tier, itinerary)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
+      userId,
       destination,
       startDate,
       endDate,
@@ -303,7 +399,7 @@ app.post('/api/trips', async function (req, res) {
     // MySQL assigned to this new row.
     const [result] = await pool.execute(sql, values);
 
-    console.log(`✅ Trip saved: "${destination}" (id: ${result.insertId})`);
+    console.log(`✅ Trip saved: "${destination}" (id: ${result.insertId}, user: ${userId})`);
 
     res.json({
       success: true,
@@ -329,18 +425,24 @@ app.post('/api/trips', async function (req, res) {
 // GET /api/trips
 //
 // PHASE 4: Fetches all saved trips from MySQL, most recent first.
-app.get('/api/trips', async function (req, res) {
+// PHASE 3 (Auth): now requires login, and only returns trips that
+// belong to the logged-in user — not everyone's trips.
+app.get('/api/trips', requireAuth, async function (req, res) {
+  const userId = req.session.userId;
+
   try {
     // pool.query() vs pool.execute():
     //   .execute() is for queries WITH placeholders (?) — it uses
     //   "prepared statements" which MySQL can optimise if run repeatedly.
     //   .query() is for simple queries with NO placeholders.
-    // This query has no user input, so .query() is fine here.
+    // This query now filters by user_id, so we need a placeholder —
+    // that means .execute() instead of the .query() used before.
     //
     // ORDER BY created_at DESC means "newest first" —
     // DESC = descending order.
-    const [rows] = await pool.query(
-      'SELECT * FROM trips ORDER BY created_at DESC'
+    const [rows] = await pool.execute(
+      'SELECT * FROM trips WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
     );
 
     // "rows" is an array of plain JavaScript objects, one per
@@ -392,24 +494,32 @@ app.get('/api/trips', async function (req, res) {
 // DELETE /api/trips/:id
 //
 // PHASE 4: Deletes a trip from MySQL by its id.
+// PHASE 3 (Auth): now requires login, and the WHERE clause
+// includes user_id — so even if someone guesses another user's
+// trip id, the DELETE simply matches zero rows and does nothing.
+// This is important: without the user_id check here, ANY logged-in
+// user could delete ANY other user's trips just by guessing ids.
 //
 // The :id part is a "URL parameter" — a variable in the URL.
 // If someone calls DELETE /api/trips/42, then req.params.id = "42"
 // (note: it arrives as a STRING, even though the column is INT —
 // MySQL/mysql2 handles this conversion for us automatically).
-app.delete('/api/trips/:id', async function (req, res) {
+app.delete('/api/trips/:id', requireAuth, async function (req, res) {
   const tripId = req.params.id;
+  const userId = req.session.userId;
 
   try {
     // DELETE FROM <table> WHERE <condition>
-    // The ? placeholder is replaced with tripId safely (no SQL injection risk).
+    // The ? placeholders are replaced safely (no SQL injection risk).
     const [result] = await pool.execute(
-      'DELETE FROM trips WHERE id = ?',
-      [tripId]
+      'DELETE FROM trips WHERE id = ? AND user_id = ?',
+      [tripId, userId]
     );
 
     // result.affectedRows tells us how many rows the DELETE matched.
-    // If it's 0, no trip with that id existed — return 404 (Not Found).
+    // If it's 0, either no trip with that id exists, OR it exists
+    // but belongs to a different user — we return 404 either way so
+    // we don't reveal to an attacker WHICH case it was.
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: `No trip found with id ${tripId}` });
     }
@@ -429,6 +539,14 @@ app.delete('/api/trips/:id', async function (req, res) {
     });
   }
 });
+
+
+// --- ROUTE GROUP: Authentication (Phase 1) ---
+// Mounts everything defined in routes/auth.js under the /api
+// prefix. So router.post('/register', ...) inside that file
+// becomes POST /api/register here — same namespace convention
+// as your other endpoints (/api/trips, /api/generate, /api/health).
+app.use('/api', authRoutes);
 
 
 // --- 5. CATCH-ALL: 404 Handler ---
