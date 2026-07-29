@@ -32,7 +32,50 @@ CREATE DATABASE IF NOT EXISTS travelmate;
 USE travelmate;
 
 
--- ── STEP 2: CREATE THE TRIPS TABLE ───────────────────────────
+-- ── STEP 2: CREATE THE USERS TABLE (Phase 1: Registration) ──
+--
+-- NOTE ON ORDERING: this table is created BEFORE trips, because
+-- trips.user_id is a foreign key that references users(id).
+-- MySQL will reject a foreign key that points at a table which
+-- doesn't exist yet, so users must always come first on a fresh
+-- database.
+--
+-- TABLE DESIGN EXPLANATION (column by column):
+--
+--   id            — Unique identifier for each user.
+--                    Same AUTO_INCREMENT + PRIMARY KEY pattern
+--                    as the trips table.
+--
+--   name          — VARCHAR(100). The user's display name.
+--                    100 chars is generous for any real name.
+--
+--   email         — VARCHAR(255). NOT NULL because every account
+--                    needs one. UNIQUE means MySQL will REJECT
+--                    an INSERT if that email already exists —
+--                    this is our database-level safety net for
+--                    "email must be unique" (in addition to the
+--                    check we also do in JavaScript).
+--
+--   password      — VARCHAR(255). This does NOT store the real
+--                    password — it stores the bcrypt HASH, which
+--                    looks like "$2b$10$N9qo8uLOickgx2ZMRZoMye...".
+--                    Bcrypt hashes are always 60 characters, so
+--                    255 gives comfortable headroom.
+--
+--   created_at    — TIMESTAMP, auto-set on insert. Same pattern
+--                    as trips.created_at — useful for "member
+--                    since" displays later.
+
+CREATE TABLE IF NOT EXISTS users (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(100)  NOT NULL,
+  email       VARCHAR(255)  NOT NULL UNIQUE,
+  password    VARCHAR(255)  NOT NULL,
+  created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- ── STEP 3: CREATE THE TRIPS TABLE ───────────────────────────
 --
 -- TABLE DESIGN EXPLANATION (column by column):
 --
@@ -41,6 +84,9 @@ USE travelmate;
 --                    automatically — you never set this yourself.
 --                    PRIMARY KEY means this column uniquely
 --                    identifies each row (required for every table).
+--
+--   user_id       — INT foreign key referencing users(id). Links
+--                    every trip to the account that created it.
 --
 --   destination   — VARCHAR(255) = variable-length text, max 255
 --                    characters. Plenty for any city/country name.
@@ -96,48 +142,13 @@ CREATE TABLE IF NOT EXISTS trips (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- ── STEP 3 (OPTIONAL): VERIFY IT WORKED ──────────────────────
+-- ── STEP 4 (OPTIONAL): VERIFY IT WORKED ──────────────────────
 --
 -- After running this file, you can check everything is correct
 -- by running these commands in the mysql shell:
 --
 --   SHOW DATABASES;                -- should list "travelmate"
 --   USE travelmate;
---   SHOW TABLES;                   -- should list "trips"
+--   SHOW TABLES;                   -- should list "users" and "trips"
+--   DESCRIBE users;                -- shows all columns and types
 --   DESCRIBE trips;                -- shows all columns and types
-
--- ── STEP 4: CREATE THE USERS TABLE (Phase 1: Registration) ──
---
--- TABLE DESIGN EXPLANATION (column by column):
---
---   id            — Unique identifier for each user.
---                    Same AUTO_INCREMENT + PRIMARY KEY pattern
---                    as the trips table.
---
---   name          — VARCHAR(100). The user's display name.
---                    100 chars is generous for any real name.
---
---   email         — VARCHAR(255). NOT NULL because every account
---                    needs one. UNIQUE means MySQL will REJECT
---                    an INSERT if that email already exists —
---                    this is our database-level safety net for
---                    "email must be unique" (in addition to the
---                    check we also do in JavaScript).
---
---   password      — VARCHAR(255). This does NOT store the real
---                    password — it stores the bcrypt HASH, which
---                    looks like "$2b$10$N9qo8uLOickgx2ZMRZoMye...".
---                    Bcrypt hashes are always 60 characters, so
---                    255 gives comfortable headroom.
---
---   created_at    — TIMESTAMP, auto-set on insert. Same pattern
---                    as trips.created_at — useful for "member
---                    since" displays later.
-
-CREATE TABLE IF NOT EXISTS users (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  name        VARCHAR(100)  NOT NULL,
-  email       VARCHAR(255)  NOT NULL UNIQUE,
-  password    VARCHAR(255)  NOT NULL,
-  created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
-);
