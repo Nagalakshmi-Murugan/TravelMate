@@ -12,7 +12,7 @@ TravelMate is a full-stack travel planning application that generates personaliz
 
 ## with login
 
-![Demo login](./screenshots/demo_with login.mp4)
+![Demo login](./screenshots/screenshots\demo_withlogin_comp.mp4)
 
 
 ## Screenshots:
