@@ -73,9 +73,51 @@ const Groq = require('groq-sdk');
 //   anyone who opens DevTools. Keeping this on server.js side
 //   is the correct pattern. Our frontend NEVER imports this file.
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+// Guard: the Groq SDK's constructor throws synchronously if
+// GROQ_API_KEY is completely unset (not just empty). Since this
+// happens at module load time, an unguarded `new Groq(...)` here
+// would crash the ENTIRE server on startup (server.js's top-level
+// require('./groqService') would throw) rather than gracefully
+// falling back — on a fresh clone with no .env yet, that's exactly
+// what would happen. We only construct the client when a key is
+// present; the guard clause at the top of generate() already
+// returns a clean { success: false } fallback when it's missing.
+let groq = null;
+if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim() !== '') {
+  groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+}
+
+
+// ── MODEL SELECTION (Aug 2026 migration) ─────────────────────
+//
+// llama-3.3-70b-versatile is being decommissioned by Groq on
+// August 16, 2026. Groq's own recommended replacements are
+// openai/gpt-oss-120b or qwen/qwen3.6-27b — both confirmed
+// currently live on the free tier as of this migration.
+//
+// gemma2-9b-it was NOT used: it was already deprecated by Groq
+// back on October 8, 2025, so it isn't callable at all anymore.
+//
+// We default to qwen/qwen3.6-27b rather than gpt-oss-120b because
+// it can fully disable "reasoning" output (reasoning_effort: "none"
+// below). gpt-oss-120b/20b are reasoning models that CANNOT fully
+// disable reasoning (minimum is "low") — their invisible reasoning
+// tokens still count against the free tier's 8K tokens/minute cap,
+// which is already lower than the old model's 12K TPM. For a
+// deterministic JSON-formatting task like this, that reasoning
+// overhead buys nothing and just eats into our token budget.
+//
+// GROQ_MODEL env var overrides this if you want to switch later
+// without touching code.
+const MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.6-27b';
+
+// Free-tier TPM (tokens/minute) is the tightest constraint for both
+// recommended replacement models (8,000 TPM each, vs. 12,000 for the
+// old model). Since our system+user prompt is only ~800 tokens, we
+// keep total (input + output) comfortably under 8,000 with margin
+// for a retry or a second quick request.
+const FREE_TIER_TPM_BUDGET = 8000;
+const PROMPT_TOKEN_ESTIMATE = 800; // system + user prompt, generously rounded up
 
 
 // ── SECTION 2: THE SYSTEM PROMPT ─────────────────────────────
@@ -113,48 +155,51 @@ const groq = new Groq({
 //   4. Realism — We ask for real places, real addresses, and
 //      real cost estimates so the output is actually useful.
 
+// NOTE ON PROMPT SIZE (Aug 2026 migration):
+//   This string was measured at ~470 tokens (~1,870 chars), not the
+//   ~5,800 tokens originally suspected — the JS comments in this file
+//   are never sent to the API, only this template literal is. It's
+//   been tightened further below (rules merged, no restated schema
+//   prose) mainly so total input stays comfortably under the new
+//   free-tier 8K TPM ceiling (see MODEL section below), not because
+//   it was the main source of the failures.
+//
+//   We ask for a JSON OBJECT (not a bare array) because we now use
+//   Groq's response_format: { type: 'json_object' } mode, which
+//   requires an object at the top level and guarantees parseable
+//   JSON (no stray markdown fences). The itinerary array lives under
+//   the "itinerary" key — server.js/frontend never see this, they
+//   still just get itinerary: [...] from generate() below.
 const SYSTEM_PROMPT = `
-You are TravelMate's expert AI travel planner. Your ONLY job is to
-return a valid JSON array — no preamble, no explanation, no markdown
-code fences, no trailing text. Just the raw JSON array.
-
-Each element in the array represents one day of the trip and MUST
-follow this exact shape:
+You are TravelMate's expert AI travel planner. Return ONLY a JSON object
+of the exact shape below — no preamble, no markdown fences, no trailing text.
 
 {
-  "day": <number>,
-  "date": "<formatted date string, e.g. Monday, 1 August 2026>",
-  "title": "Day <number> — <Destination>",
-  "activities": [
+  "itinerary": [
     {
-      "time": "<time in 12-hour format, e.g. 09:00 AM>",
-      "activity": "<specific activity name and brief description>",
-      "location": "<real venue name and neighbourhood, e.g. Louvre Museum, 1st arrondissement>",
-      "cost": "<realistic cost range, e.g. $15 – $25 per person, or $0 – Free>",
-      "tip": "<one practical insider tip for this activity>"
+      "day": <number>,
+      "date": "<formatted date, e.g. Monday, 1 August 2026>",
+      "title": "Day <number> — <Destination>",
+      "activities": [
+        {
+          "time": "<12-hour time, e.g. 09:00 AM>",
+          "activity": "<specific activity name and brief description>",
+          "location": "<real venue name and neighbourhood>",
+          "cost": "<realistic cost range, e.g. $15 – $25 per person, or Free>",
+          "tip": "<one practical, specific insider tip>"
+        }
+      ]
     }
   ]
 }
 
-RULES — follow every one of these without exception:
-1. Return ONLY the raw JSON array. No text before or after it.
-2. Each day must have exactly 4 activities spread through the day
-   (morning, midday, afternoon, evening).
-3. NEVER repeat the same venue, landmark, or location across
-   different days. Every location must be unique in the entire trip.
-4. Use real place names appropriate for the destination. Do not
-   invent fictional venues.
-5. Costs must reflect the budget tier realistically. Low budget
-   favours free attractions and street food. High budget includes
-   fine dining and private tours.
-6. Tips must be practical and specific — not generic advice like
-   "have fun". Think: best time to visit, booking links, local
-   customs, transport hacks.
-7. Times must be in chronological order within each day (earliest
-   activity first).
-8. The travel style must shape every activity choice. A "foodie"
-   trip should be dominated by markets, restaurants, and food tours.
-   An "adventure" trip should have outdoor and physical activities.
+Rules:
+1. Exactly 4 activities per day (morning, midday, afternoon, evening), times in chronological order.
+2. Never repeat the same venue/landmark across different days — every location must be unique in the trip.
+3. Use real, existing place names for the destination. Never invent venues.
+4. Costs must match the budget tier (low = free/street food, high = fine dining/private tours).
+5. Tips must be concrete (timing, booking, local customs, transport) — never generic ("have fun").
+6. The travel style must shape every activity choice (e.g. "foodie" → markets/restaurants/food tours; "adventure" → outdoor/physical).
 `.trim();
 
 
@@ -205,6 +250,24 @@ Trip details:
 Generate the complete day-by-day itinerary for all ${days} days.
 Remember: return ONLY the JSON array, with ${days} day objects.
   `.trim();
+}
+
+
+// ── SECTION 3B: DEFENSIVE MARKDOWN-FENCE STRIPPING ───────────
+//
+// response_format: { type: 'json_object' } should prevent this,
+// but as a cheap defensive layer (not fragile regex — just plain
+// string checks) we strip a leading/trailing ```json ... ``` fence
+// if the model adds one anyway.
+function stripMarkdownFence(text) {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('```')) return trimmed;
+
+  const withoutFirstFence = trimmed.slice(trimmed.indexOf('\n') + 1);
+  const closingFenceIndex = withoutFirstFence.lastIndexOf('```');
+  return closingFenceIndex === -1
+    ? withoutFirstFence.trim()
+    : withoutFirstFence.slice(0, closingFenceIndex).trim();
 }
 
 
@@ -286,12 +349,35 @@ async function generate(tripDetails) {
   // This prevents a confusing "401 Unauthorized" error from
   // bubbling up and is easy to explain in the server logs.
   if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY.trim() === '') {
-    console.warn('⚠️  GROQ_API_KEY not set — falling back to rule-based engine');
+    console.warn('[Groq] Request failed');
+    console.warn('[Groq] Error: GROQ_API_KEY not configured');
+    console.warn('[Groq] Falling back to rule-based itinerary');
     return { success: false, error: 'GROQ_API_KEY not configured' };
   }
 
   try {
-    console.log(`🤖 Groq: generating ${days}-day itinerary for ${destination}…`);
+    console.log('[Groq] Attempting AI itinerary generation');
+    console.log(`[Groq] Model: ${MODEL}`);
+
+    // ── DYNAMIC OUTPUT TOKEN BUDGET ────────────────────────────
+    //
+    // Instead of a flat 3000/4096 for every trip, scale with the
+    // number of days actually requested. ~550 tokens/day covers 4
+    // activities with full time/activity/location/cost/tip text
+    // comfortably; the +600 floor covers day/date/title overhead
+    // plus JSON punctuation. Capped so a very long trip can never
+    // push the total request over the free-tier TPM ceiling.
+    const outputBudget = Math.min(
+      FREE_TIER_TPM_BUDGET - PROMPT_TOKEN_ESTIMATE - 200, // hard ceiling with safety margin
+      600 + days * 550
+    );
+
+    console.log(
+      `[Groq] Request token strategy: ~${PROMPT_TOKEN_ESTIMATE} prompt tokens + ` +
+      `${outputBudget} max output tokens (~${PROMPT_TOKEN_ESTIMATE + outputBudget} total, ` +
+      `budget ${FREE_TIER_TPM_BUDGET} TPM)`
+    );
+
     const startTime = Date.now();
 
     // ── THE API CALL ──────────────────────────────────────────
@@ -337,25 +423,36 @@ async function generate(tripDetails) {
     //   prompt the model to wrap the array in { "itinerary": [...] }
     //   so it works within the constraint. See SYSTEM_PROMPT above.
 
-    const completion = await groq.chat.completions.create({
-      model:    'llama-3.3-70b-versatile',
+    // reasoning_effort is only accepted by qwen3-family and gpt-oss
+    // models on Groq; other models (e.g. llama-3.1-8b-instant) will
+    // reject an unrecognised parameter. Only send it when relevant,
+    // and prefer "none" (qwen3) to fully skip reasoning tokens, or
+    // "low" (gpt-oss) since that family can't disable it outright.
+    const requestParams = {
+      model:    MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user',   content: buildUserPrompt(tripDetails) },
       ],
-      temperature:     0.7,
-      max_tokens:      4096,
+      temperature:          0.7,
+      max_completion_tokens: outputBudget,
 
-      // JSON mode: forces valid JSON output from the model.
-      // We must still ask for JSON in the prompt — this just
-      // guarantees the response is parseable.
-      // NOTE: When json_object mode is active, the model returns
-      // a top-level object. We wrap our array in { itinerary: [...] }
-      // and update the system prompt accordingly.
-    });
+      // JSON mode: guarantees a parseable JSON object back — no
+      // markdown fences, no preamble — as long as the prompt (above)
+      // also asks for JSON, which it does.
+      response_format: { type: 'json_object' },
+    };
+
+    if (MODEL.includes('qwen')) {
+      requestParams.reasoning_effort = 'none';
+    } else if (MODEL.includes('gpt-oss')) {
+      requestParams.reasoning_effort = 'low';
+    }
+
+    const completion = await groq.chat.completions.create(requestParams);
 
     const elapsed = Date.now() - startTime;
-    console.log(`✅ Groq: response received in ${elapsed}ms`);
+    console.log(`[Groq] AI request successful (${elapsed}ms, ${completion.usage?.total_tokens ?? '?'} tokens used)`);
 
     // ── EXTRACT THE RESPONSE TEXT ─────────────────────────────
     //
@@ -389,7 +486,7 @@ async function generate(tripDetails) {
     let itinerary;
 
     try {
-      const parsed = JSON.parse(rawText);
+      const parsed = JSON.parse(stripMarkdownFence(rawText));
 
       if (Array.isArray(parsed)) {
         // The model returned a bare array — use it directly
@@ -451,7 +548,7 @@ async function generate(tripDetails) {
       `${days}-day ${styleLabels[style] || style} trip to ${destination} ` +
       `(${budgetLabels[budgetTier]} — $${budget} total) · AI-powered`;
 
-    console.log(`✅ Groq itinerary ready: ${itinerary.length} days for ${destination}`);
+    console.log(`[Groq] Itinerary ready: ${itinerary.length} days for ${destination}`);
 
     return {
       success:    true,
@@ -473,7 +570,13 @@ async function generate(tripDetails) {
     //
     // We log the error so developers can debug, but the end user
     // just silently receives a rule-based itinerary instead.
-    console.error('❌ Groq AI error (will fall back):', error.message);
+    // error.status is populated by the Groq SDK for HTTP-level
+    // failures (400/401/404/429/etc.); it's undefined for local
+    // errors like JSON parsing or validation failures.
+    console.error('[Groq] Request failed');
+    if (error.status) console.error(`[Groq] Status: ${error.status}`);
+    console.error(`[Groq] Error: ${error.message}`);
+    console.error('[Groq] Falling back to rule-based itinerary');
 
     return {
       success: false,
